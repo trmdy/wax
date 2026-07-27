@@ -125,7 +125,12 @@ seal.
 - Coordinator owns `ASSIGNMENTS.json` (shard → bee → branch → state) and
   merges to `main`; shards work on `agent/wax-w<N><letter>-<slug>` branches
   and **seal** (`hive seal`) with: deliverables, test counts, scoreboard
-  delta, deviations. ≤8 bees concurrent; spawn with `--account auto`.
+  delta, deviations. ≤8 bees concurrent.
+- **Cast (decided 2026-07-27, Tormod):** the coordinator is a claude bee on
+  model `fable`; implementor shards are codex bees on `gpt-5.6-sol` —
+  `hive spawn codex --account auto -- -m gpt-5.6-sol -c
+  'model_reasoning_effort="xhigh"'`. Always `--account auto`, never a
+  hand-picked home.
 - Every shard writes tests for its logic; clippy + fmt clean; no shard
   touches another shard's crate without coordinator sign-off.
 - Corpus downloads are polite (rate-limited, resumable, provenance-logged).
