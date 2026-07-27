@@ -1,5 +1,8 @@
 target/
 corpus/files/
 harness/oracle-out/
+harness/results.jsonl
 node_modules/
+.worktrees/
+.DS_Store
 *.log
