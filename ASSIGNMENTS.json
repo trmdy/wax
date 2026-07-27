@@ -3,7 +3,15 @@
   "wave": "W1",
   "coordinator": "CL.661",
   "updated": "2026-07-27",
-  "states": ["planned", "spawned", "working", "sealed", "merged", "retired", "blocked"],
+  "states": [
+    "planned",
+    "spawned",
+    "working",
+    "sealed",
+    "merged",
+    "retired",
+    "blocked"
+  ],
   "shards": [
     {
       "id": "w1a",
@@ -11,20 +19,27 @@
       "title": "Cargo workspace scaffold + wax CLI + stub reader",
       "branch": "agent/wax-w1a-scaffold",
       "worktree": ".worktrees/w1a",
-      "bee": null,
-      "state": "planned",
-      "owns": ["Cargo.toml", "Cargo.lock", "crates/**", "rust-toolchain.toml"],
+      "bee": "wax-w1a",
+      "state": "spawned",
+      "owns": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/**",
+        "rust-toolchain.toml"
+      ],
       "brief": "docs/briefs/w1a.md"
     },
     {
       "id": "w1b",
       "slug": "corpus",
-      "title": "Corpus fetch + manifest (≥1000 files) + provenance",
+      "title": "Corpus fetch + manifest (\u22651000 files) + provenance",
       "branch": "agent/wax-w1b-corpus",
       "worktree": ".worktrees/w1b",
-      "bee": null,
-      "state": "planned",
-      "owns": ["corpus/**"],
+      "bee": "wax-w1b",
+      "state": "spawned",
+      "owns": [
+        "corpus/**"
+      ],
       "brief": "docs/briefs/w1b.md"
     },
     {
@@ -33,9 +48,11 @@
       "title": "SheetJS oracle runner (node, pinned 0.20.3)",
       "branch": "agent/wax-w1c-oracle",
       "worktree": ".worktrees/w1c",
-      "bee": null,
-      "state": "planned",
-      "owns": ["harness/oracle/**"],
+      "bee": "wax-w1c",
+      "state": "spawned",
+      "owns": [
+        "harness/oracle/**"
+      ],
       "brief": "docs/briefs/w1c.md"
     },
     {
@@ -44,9 +61,13 @@
       "title": "Differential harness + scoreboard generator + run.sh",
       "branch": "agent/wax-w1d-harness",
       "worktree": ".worktrees/w1d",
-      "bee": null,
-      "state": "planned",
-      "owns": ["harness/wax-harness/**", "harness/run.sh", "harness/adjudications.md"],
+      "bee": "wax-w1d",
+      "state": "spawned",
+      "owns": [
+        "harness/wax-harness/**",
+        "harness/run.sh",
+        "harness/adjudications.md"
+      ],
       "brief": "docs/briefs/w1d.md"
     },
     {
@@ -55,9 +76,12 @@
       "title": "CI: scripts/check.sh + GitHub workflows",
       "branch": "agent/wax-w1e-ci",
       "worktree": ".worktrees/w1e",
-      "bee": null,
-      "state": "planned",
-      "owns": ["scripts/**", ".github/**"],
+      "bee": "wax-w1e",
+      "state": "spawned",
+      "owns": [
+        "scripts/**",
+        ".github/**"
+      ],
       "brief": "docs/briefs/w1e.md"
     }
   ]
