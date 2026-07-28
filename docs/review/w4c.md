@@ -82,3 +82,13 @@ xlsx-representable.
 
 None found; test counts, check.sh, and contract adherence verified
 independently in a detached worktree at 51c63f8.
+
+## Fix log
+
+- 2026-07-28 (swap sealed, commit 0353baa): CSV delegation swap landed —
+  serve's local CSV encoder/temp-persist deleted (−160 lines), export
+  delegates to `wax_write::write_csv` through the writer error adapter,
+  dropped assertions updated to the canonical five entries, and both
+  staged xlsx success-path tests un-ignored and passing against the real
+  writer (32 wax-cli tests, full workspace 191). Coordinator had earlier
+  flipped the two stub-pinned tests at the W4A merge (cdedc89).
