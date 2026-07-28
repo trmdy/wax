@@ -95,3 +95,8 @@ merge order needs. Real corpus numbers land at integration.
 - 2026-07-28: coordinator sent finding 1 as the required pre-merge fix
   (+ the triage private-count nit as welcome); finding 2 deferred until
   after W4A's writer merges.
+- 2026-07-28 (fixes sealed, commit f5d58ea): availability evidence now
+  requires an actually-succeeded export stage (`export_stage_succeeded`),
+  pinned by `unavailable_exports_with_tempdir_failure_remain_unavailable`;
+  triage's oracle read-back section counts private-file failures without
+  leaking paths (no-leak asserted). Merged to main together with W4C.
