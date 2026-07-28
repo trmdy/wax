@@ -229,7 +229,7 @@ fn windows_clip_report_merges_and_reject_invalid_requests() {
 }
 
 #[test]
-fn csv_export_is_rfc_4180_and_xlsx_reaches_writer_stub() {
+fn csv_export_is_rfc_4180_and_xlsx_succeeds() {
     let temp = tempfile::tempdir().expect("temporary directory");
     let out = temp.path().join("reader.csv");
     let mut server = Server::start(&[]);
@@ -253,7 +253,9 @@ fn csv_export_is_rfc_4180_and_xlsx_reaches_writer_stub() {
         json!([
             "formulas (cached values only)",
             "number formatting beyond display strings",
-            "merges"
+            "merges",
+            "styles",
+            "column widths"
         ])
     );
 
@@ -352,6 +354,8 @@ fn export_appends_open_warnings_to_dropped() {
             "formulas (cached values only)",
             "number formatting beyond display strings",
             "merges",
+            "styles",
+            "column widths",
             "xlsb merged regions are best-effort"
         ])
     );
@@ -359,7 +363,6 @@ fn export_appends_open_warnings_to_dropped() {
 }
 
 #[test]
-#[ignore = "requires the W4A wax-write xlsx implementation"]
 fn xlsx_export_round_trips_values_and_merges() {
     let temp = tempfile::tempdir().expect("temporary directory");
     let out = temp.path().join("copy.xlsx");
