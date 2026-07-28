@@ -105,7 +105,24 @@ Rustdoc in the crate is normative. Behavior:
   - Merges: `sheet_merges` ranges via `merge_range`. In the normalized
     model only the anchor cell carries a value; write the anchor value
     into the merge. A merge whose anchor is empty is written as a blank
-    merge.
+    merge. *(Amended 2026-07-28 post-review:)* merges the xlsx format
+    cannot express — single-cell (`A1:A1` normalizes to `"A1"`),
+    overlapping, or unparseable ranges — are **skipped with a loud
+    deduped `dropped` entry**, never a whole-export failure.
+  - *(Amended 2026-07-28 post-review — robustness over hard failure,
+    always loud:)*
+    - Sheet names xlsx cannot represent (>31 chars, `[ ] : * ? / \` —
+      legal in ODS sources) are sanitized (truncate/replace, keep
+      uniqueness) with a `dropped` entry naming the original.
+    - Column widths are clamped to xlsx's 0..=255 with a `dropped`
+      entry when clamping occurred (W4D coordinates the same bound on
+      extraction).
+    - ISO datetime values with a timezone offset (`…+02:00`) are
+      **rejected loudly** (`internal`, naming the cell) — never passed
+      to `ExcelDateTime::parse_from_str`, which silently mis-parses
+      them. Trailing-`Z`/naive forms remain the supported inputs.
+    - A zero-sheet store is `bad_request` ("empty workbook") — the
+      writer never invents a blank sheet.
   - Column widths: `sheet_col_infos` → `set_column_width`.
   - **Loud drops**: every model feature the writer cannot express appends
     a distinct human-readable `dropped` entry (deduplicated), e.g.
