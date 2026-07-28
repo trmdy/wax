@@ -184,23 +184,38 @@ fn unstyled_xlsx_dump_stays_byte_identical_to_the_pre_w4_shape() {
 }
 
 #[test]
-fn malformed_styles_degrade_to_a_warning_without_failing_the_open() {
+fn malformed_style_attributes_keep_formats_and_valid_neighbor_styles() {
     let malformed = include_str!("fixtures/reader-src/xl/styles.xml")
         .replace(r#"rgb="FF1A2B3C""#, r#"rgb="not-a-color""#);
     let fixture = fixture_with_replaced_part("xl/styles.xml", malformed.as_bytes());
     let document = read_with_deadline(CalamineReader, fixture.path(), ReaderOptions::default());
 
     assert!(document.ok, "{:?}", document.error);
-    assert!(document
+    assert!(!document
         .warnings
         .iter()
         .any(|warning| warning.contains("xlsx styles could not be read")));
-    assert!(document.styles.is_empty());
-    assert!(document
-        .sheets
-        .iter()
-        .flat_map(|sheet| &sheet.cells)
-        .all(|cell| cell.s.is_none()));
+
+    let cells = &document.sheets[0].cells;
+    assert_eq!(cell(cells, 0, 3).fmt.as_deref(), Some("yyyy-mm-dd"));
+    assert_eq!(cell(cells, 0, 4).fmt.as_deref(), Some("mm-dd-yy"));
+    assert_eq!(cell(cells, 0, 3).s, Some(0));
+    assert_eq!(cell(cells, 0, 4).s, Some(0));
+    assert_eq!(cell(cells, 0, 6).s, Some(1));
+    assert_eq!(
+        document.styles,
+        [
+            CellStyle {
+                fill_color: Some("#EEDDCC".to_owned()),
+                ..CellStyle::default()
+            },
+            CellStyle {
+                font_color: Some("#969696".to_owned()),
+                fill_color: Some("#9999FF".to_owned()),
+                ..CellStyle::default()
+            }
+        ]
+    );
 }
 
 #[test]

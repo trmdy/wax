@@ -917,6 +917,12 @@ struct ResolvedXf {
     style: Option<CellStyle>,
 }
 
+enum StyleAttribute<T> {
+    Missing,
+    Value(T),
+    Invalid,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ColumnDeclaration {
     min: u32,
@@ -1058,24 +1064,58 @@ impl OoxmlSupplement {
             .min(EXCEL_MAX_COLUMNS)
             .saturating_add(WIDTH_HEADROOM_COLUMNS)
             .min(EXCEL_MAX_COLUMNS);
-        let mut widths = BTreeMap::new();
-        for declaration in &sheet.columns {
-            let end = declaration.max.min(expansion_limit);
-            if declaration.min > end {
+        let limit = usize::try_from(expansion_limit).unwrap_or(usize::MAX);
+        let mut widths = vec![None; limit];
+        // A successor set skips columns that already received their
+        // last-declaration-wins value. Iterating declarations in reverse makes
+        // each output column writable once, bounding expansion by O(N + cap)
+        // even when thousands of declarations cover the same whole sheet.
+        let mut next_uncovered = (0..=limit).collect::<Vec<_>>();
+        let mut remaining = limit;
+        for declaration in sheet.columns.iter().rev() {
+            if remaining == 0 {
+                break;
+            }
+            let start = usize::try_from(declaration.min.saturating_sub(1)).unwrap_or(usize::MAX);
+            let end = usize::try_from(declaration.max.min(expansion_limit).saturating_sub(1))
+                .unwrap_or(usize::MAX);
+            if start >= limit || start > end {
                 continue;
             }
-            for column in declaration.min..=end {
-                widths.insert(
-                    column.saturating_sub(1),
-                    ColInfo {
-                        c: column.saturating_sub(1),
-                        width: declaration.width,
-                    },
-                );
+            let mut column = next_available_column(&mut next_uncovered, start);
+            while column <= end {
+                widths[column] = Some(declaration.width);
+                remaining -= 1;
+                let successor = next_available_column(&mut next_uncovered, column + 1);
+                next_uncovered[column] = successor;
+                column = successor;
             }
         }
-        widths.into_values().collect()
+        widths
+            .into_iter()
+            .enumerate()
+            .filter_map(|(column, width)| {
+                Some(ColInfo {
+                    c: u32::try_from(column).ok()?,
+                    width: width?,
+                })
+            })
+            .collect()
     }
+}
+
+fn next_available_column(successors: &mut [usize], index: usize) -> usize {
+    let mut root = index;
+    while successors[root] != root {
+        root = successors[root];
+    }
+    let mut current = index;
+    while successors[current] != current {
+        let next = successors[current];
+        successors[current] = root;
+        current = next;
+    }
+    root
 }
 
 struct WorkbookSheet {
@@ -1257,7 +1297,7 @@ fn parse_styles(xml: &[u8]) -> Result<Vec<ResolvedXf>, String> {
                 if in_num_formats && element.local_name().as_ref() == b"numFmt" =>
             {
                 if let (Some(id), Some(code)) = (
-                    xml_u32_attribute(&reader, &element, b"numFmtId", "numFmtId")?,
+                    style_attribute_value(style_u32_attribute(&reader, &element, b"numFmtId")?),
                     xml_attribute(&reader, &element, b"formatCode")?,
                 ) {
                     custom.insert(id, code);
@@ -1266,16 +1306,28 @@ fn parse_styles(xml: &[u8]) -> Result<Vec<ResolvedXf>, String> {
             Ok(Event::Start(element) | Event::Empty(element))
                 if in_cell_xfs && element.local_name().as_ref() == b"xf" =>
             {
-                let id =
-                    xml_u32_attribute(&reader, &element, b"numFmtId", "xf numFmtId")?.unwrap_or(0);
+                let Some(id) =
+                    style_id_or_default(style_u32_attribute(&reader, &element, b"numFmtId")?)
+                else {
+                    xfs.push(ResolvedXf::default());
+                    continue;
+                };
+                let Some(font_id) =
+                    style_id_or_default(style_u32_attribute(&reader, &element, b"fontId")?)
+                else {
+                    xfs.push(ResolvedXf::default());
+                    continue;
+                };
+                let Some(fill_id) =
+                    style_id_or_default(style_u32_attribute(&reader, &element, b"fillId")?)
+                else {
+                    xfs.push(ResolvedXf::default());
+                    continue;
+                };
                 let format = custom
                     .get(&id)
                     .cloned()
                     .or_else(|| builtin_format(id).map(str::to_owned));
-                let font_id =
-                    xml_u32_attribute(&reader, &element, b"fontId", "xf fontId")?.unwrap_or(0);
-                let fill_id =
-                    xml_u32_attribute(&reader, &element, b"fillId", "xf fillId")?.unwrap_or(0);
                 let mut style = fonts
                     .get(usize::try_from(font_id).unwrap_or(usize::MAX))
                     .cloned()
@@ -1308,27 +1360,45 @@ fn parse_styles(xml: &[u8]) -> Result<Vec<ResolvedXf>, String> {
 fn parse_font(reader: &mut XmlReader<&[u8]>) -> Result<CellStyle, String> {
     let mut buffer = Vec::new();
     let mut style = CellStyle::default();
+    let mut invalid = false;
     loop {
         buffer.clear();
         match reader.read_event_into(&mut buffer) {
             Ok(Event::Start(element) | Event::Empty(element)) => {
                 match element.local_name().as_ref() {
-                    b"b" => style.bold = xml_on_off(reader, &element)?,
-                    b"i" => style.italic = xml_on_off(reader, &element)?,
-                    b"u" => {
-                        style.underline = xml_attribute(reader, &element, b"val")?
-                            .is_none_or(|value| !value.eq_ignore_ascii_case("none"));
-                    }
-                    b"strike" => style.strike = xml_on_off(reader, &element)?,
-                    b"sz" => {
-                        style.font_size = xml_f64_attribute(reader, &element, b"val", "font size")?
-                            .filter(|size| *size > 0.0);
-                    }
-                    b"name" => {
-                        style.font_name = xml_attribute(reader, &element, b"val")?
-                            .filter(|name| !name.is_empty());
-                    }
-                    b"color" => style.font_color = parse_ooxml_color(reader, &element)?,
+                    b"b" => match style_on_off_attribute(reader, &element)? {
+                        StyleAttribute::Value(value) => style.bold = value,
+                        StyleAttribute::Missing | StyleAttribute::Invalid => invalid = true,
+                    },
+                    b"i" => match style_on_off_attribute(reader, &element)? {
+                        StyleAttribute::Value(value) => style.italic = value,
+                        StyleAttribute::Missing | StyleAttribute::Invalid => invalid = true,
+                    },
+                    b"u" => match style_underline_attribute(reader, &element)? {
+                        StyleAttribute::Value(value) => style.underline = value,
+                        StyleAttribute::Missing | StyleAttribute::Invalid => invalid = true,
+                    },
+                    b"strike" => match style_on_off_attribute(reader, &element)? {
+                        StyleAttribute::Value(value) => style.strike = value,
+                        StyleAttribute::Missing | StyleAttribute::Invalid => invalid = true,
+                    },
+                    b"sz" => match style_f64_attribute(reader, &element, b"val")? {
+                        StyleAttribute::Value(size) if size > 0.0 => {
+                            style.font_size = Some(size);
+                        }
+                        StyleAttribute::Missing
+                        | StyleAttribute::Value(_)
+                        | StyleAttribute::Invalid => invalid = true,
+                    },
+                    b"name" => match xml_attribute(reader, &element, b"val")? {
+                        Some(name) if !name.is_empty() => style.font_name = Some(name),
+                        Some(_) | None => invalid = true,
+                    },
+                    b"color" => match parse_ooxml_color(reader, &element)? {
+                        StyleAttribute::Value(color) => style.font_color = color,
+                        StyleAttribute::Missing => {}
+                        StyleAttribute::Invalid => invalid = true,
+                    },
                     _ => {}
                 }
             }
@@ -1338,13 +1408,14 @@ fn parse_font(reader: &mut XmlReader<&[u8]>) -> Result<CellStyle, String> {
             Err(error) => return Err(format!("invalid styles XML: {error}")),
         }
     }
-    Ok(style)
+    Ok(if invalid { CellStyle::default() } else { style })
 }
 
 fn parse_fill(reader: &mut XmlReader<&[u8]>) -> Result<Option<String>, String> {
     let mut buffer = Vec::new();
     let mut solid = false;
     let mut foreground = None;
+    let mut invalid = false;
     loop {
         buffer.clear();
         match reader.read_event_into(&mut buffer) {
@@ -1357,7 +1428,11 @@ fn parse_fill(reader: &mut XmlReader<&[u8]>) -> Result<Option<String>, String> {
             Ok(Event::Start(element) | Event::Empty(element))
                 if element.local_name().as_ref() == b"fgColor" =>
             {
-                foreground = parse_ooxml_color(reader, &element)?;
+                match parse_ooxml_color(reader, &element)? {
+                    StyleAttribute::Value(color) => foreground = color,
+                    StyleAttribute::Missing => {}
+                    StyleAttribute::Invalid => invalid = true,
+                }
             }
             Ok(Event::End(element)) if element.local_name().as_ref() == b"fill" => break,
             Ok(Event::Eof) => return Err("invalid styles XML: unclosed fill element".to_owned()),
@@ -1365,40 +1440,116 @@ fn parse_fill(reader: &mut XmlReader<&[u8]>) -> Result<Option<String>, String> {
             Err(error) => return Err(format!("invalid styles XML: {error}")),
         }
     }
-    Ok(solid.then_some(foreground).flatten())
+    Ok((solid && !invalid).then_some(foreground).flatten())
 }
 
 fn parse_ooxml_color(
     reader: &XmlReader<&[u8]>,
     element: &BytesStart<'_>,
-) -> Result<Option<String>, String> {
+) -> Result<StyleAttribute<Option<String>>, String> {
     if xml_attribute(reader, element, b"theme")?.is_some()
         || xml_attribute(reader, element, b"tint")?.is_some()
     {
-        return Ok(None);
+        return Ok(StyleAttribute::Value(None));
     }
     if let Some(rgb) = xml_attribute(reader, element, b"rgb")? {
         let rgb = match rgb.len() {
             6 => rgb.as_str(),
             8 => &rgb[2..],
-            _ => return Err(format!("invalid OOXML rgb color {rgb:?}")),
+            _ => return Ok(StyleAttribute::Invalid),
         };
         if !rgb.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(format!("invalid OOXML rgb color {rgb:?}"));
+            return Ok(StyleAttribute::Invalid);
         }
-        return Ok(Some(format!("#{}", rgb.to_ascii_uppercase())));
+        return Ok(StyleAttribute::Value(Some(format!(
+            "#{}",
+            rgb.to_ascii_uppercase()
+        ))));
     }
-    let Some(indexed) = xml_u32_attribute(reader, element, b"indexed", "indexed color")? else {
-        return Ok(None);
+    let Some(indexed) = xml_attribute(reader, element, b"indexed")? else {
+        return Ok(StyleAttribute::Missing);
     };
-    Ok(LEGACY_INDEXED_COLORS
-        .get(usize::try_from(indexed).unwrap_or(usize::MAX))
-        .map(|rgb| format!("#{rgb}")))
+    let Ok(indexed) = indexed.parse::<usize>() else {
+        return Ok(StyleAttribute::Invalid);
+    };
+    Ok(StyleAttribute::Value(
+        LEGACY_INDEXED_COLORS
+            .get(indexed)
+            .map(|rgb| format!("#{rgb}")),
+    ))
 }
 
-fn xml_on_off(reader: &XmlReader<&[u8]>, element: &BytesStart<'_>) -> Result<bool, String> {
-    Ok(xml_attribute(reader, element, b"val")?
-        .is_none_or(|value| !matches!(value.to_ascii_lowercase().as_str(), "0" | "false" | "off")))
+fn style_attribute_value<T>(attribute: StyleAttribute<T>) -> Option<T> {
+    match attribute {
+        StyleAttribute::Value(value) => Some(value),
+        StyleAttribute::Missing | StyleAttribute::Invalid => None,
+    }
+}
+
+fn style_id_or_default(attribute: StyleAttribute<u32>) -> Option<u32> {
+    match attribute {
+        StyleAttribute::Missing => Some(0),
+        StyleAttribute::Value(value) => Some(value),
+        StyleAttribute::Invalid => None,
+    }
+}
+
+fn style_u32_attribute(
+    reader: &XmlReader<&[u8]>,
+    element: &BytesStart<'_>,
+    key: &[u8],
+) -> Result<StyleAttribute<u32>, String> {
+    let Some(value) = xml_attribute(reader, element, key)? else {
+        return Ok(StyleAttribute::Missing);
+    };
+    Ok(value
+        .parse::<u32>()
+        .map_or(StyleAttribute::Invalid, StyleAttribute::Value))
+}
+
+fn style_f64_attribute(
+    reader: &XmlReader<&[u8]>,
+    element: &BytesStart<'_>,
+    key: &[u8],
+) -> Result<StyleAttribute<f64>, String> {
+    let Some(value) = xml_attribute(reader, element, key)? else {
+        return Ok(StyleAttribute::Missing);
+    };
+    Ok(value
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .map_or(StyleAttribute::Invalid, StyleAttribute::Value))
+}
+
+fn style_on_off_attribute(
+    reader: &XmlReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<StyleAttribute<bool>, String> {
+    let Some(value) = xml_attribute(reader, element, b"val")? else {
+        return Ok(StyleAttribute::Value(true));
+    };
+    Ok(match value.to_ascii_lowercase().as_str() {
+        "1" | "true" | "on" => StyleAttribute::Value(true),
+        "0" | "false" | "off" => StyleAttribute::Value(false),
+        _ => StyleAttribute::Invalid,
+    })
+}
+
+fn style_underline_attribute(
+    reader: &XmlReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> Result<StyleAttribute<bool>, String> {
+    let Some(value) = xml_attribute(reader, element, b"val")? else {
+        return Ok(StyleAttribute::Value(true));
+    };
+    Ok(match value.as_str() {
+        "single" | "double" | "singleAccounting" | "doubleAccounting" => {
+            StyleAttribute::Value(true)
+        }
+        "none" => StyleAttribute::Value(false),
+        _ => StyleAttribute::Invalid,
+    })
 }
 
 fn xml_u32_attribute(
@@ -1789,6 +1940,51 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_whole_sheet_widths_are_bounded_by_declarations_plus_cap() {
+        let columns = (0..20_000)
+            .map(|index| ColumnDeclaration {
+                min: 1,
+                max: 16_384,
+                width: f64::from(index),
+            })
+            .collect();
+        let supplement = OoxmlSupplement {
+            sheets: HashMap::from([(
+                "Sheet1".to_owned(),
+                OoxmlSheetSupplement {
+                    cells: HashMap::new(),
+                    columns,
+                },
+            )]),
+            ..OoxmlSupplement::default()
+        };
+
+        let started = Instant::now();
+        let widths = supplement.col_infos("Sheet1", 16_384);
+        let elapsed = started.elapsed();
+
+        assert_eq!(widths.len(), 16_384);
+        assert_eq!(
+            widths[0],
+            ColInfo {
+                c: 0,
+                width: 19_999.0
+            }
+        );
+        assert_eq!(
+            widths[16_383],
+            ColInfo {
+                c: 16_383,
+                width: 19_999.0
+            }
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "20,000 overlapping declarations took {elapsed:?}"
+        );
+    }
+
+    #[test]
     fn parses_basic_fonts_solid_fills_and_supported_colors() {
         let xml = br##"
             <styleSheet>
@@ -1841,6 +2037,57 @@ mod tests {
     }
 
     #[test]
+    fn malformed_style_entries_keep_xf_alignment_and_valid_neighbors() {
+        let xml = br##"
+            <styleSheet>
+              <numFmts count="2">
+                <numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>
+                <numFmt numFmtId="bad" formatCode="discarded"/>
+              </numFmts>
+              <fonts count="3">
+                <font><b/></font>
+                <font><b/><sz val="large"/><color rgb="auto"/></font>
+                <font><i/><color rgb="FF112233"/></font>
+              </fonts>
+              <fills count="3">
+                <fill/>
+                <fill><patternFill patternType="solid"><fgColor rgb="auto"/></patternFill></fill>
+                <fill><patternFill patternType="solid"><fgColor rgb="FF445566"/></patternFill></fill>
+              </fills>
+              <cellXfs count="5">
+                <xf numFmtId="164" fontId="0" fillId="0"/>
+                <xf numFmtId="4" fontId="1" fillId="1"/>
+                <xf numFmtId="bad" fontId="2" fillId="2"/>
+                <xf numFmtId="14" fontId="bad" fillId="2"/>
+                <xf numFmtId="14" fontId="2" fillId="2"/>
+              </cellXfs>
+            </styleSheet>
+        "##;
+
+        let xfs = parse_styles(xml).expect("attribute junk should stay local to its entry");
+
+        assert_eq!(xfs.len(), 5, "bad entries must retain XF indexes");
+        assert_eq!(xfs[0].format.as_deref(), Some("yyyy-mm-dd"));
+        assert!(xfs[0].style.as_ref().is_some_and(|style| style.bold));
+        assert_eq!(xfs[1].format.as_deref(), Some("#,##0.00"));
+        assert_eq!(xfs[1].style, None, "bad font/fill become placeholders");
+        assert_eq!(xfs[2].format, None, "bad numFmtId skips one XF");
+        assert_eq!(xfs[2].style, None, "bad numFmtId skips one XF");
+        assert_eq!(xfs[3].format, None, "bad fontId skips one XF");
+        assert_eq!(xfs[3].style, None, "bad fontId skips one XF");
+        assert_eq!(xfs[4].format.as_deref(), Some("mm-dd-yy"));
+        assert_eq!(
+            xfs[4].style,
+            Some(CellStyle {
+                italic: true,
+                font_color: Some("#112233".to_owned()),
+                fill_color: Some("#445566".to_owned()),
+                ..CellStyle::default()
+            })
+        );
+    }
+
+    #[test]
     fn style_interning_deduplicates_and_never_interns_the_default() {
         let style = CellStyle {
             bold: true,
@@ -1887,12 +2134,8 @@ mod tests {
     }
 
     #[test]
-    fn malformed_styles_and_columns_are_rejected_for_fail_soft_callers() {
+    fn malformed_xml_and_columns_are_rejected_for_fail_soft_callers() {
         assert!(parse_styles(b"<styleSheet><fonts>").is_err());
-        assert!(
-            parse_styles(br#"<styleSheet><cellXfs><xf fontId="bad"/></cellXfs></styleSheet>"#)
-                .is_err()
-        );
         assert!(parse_column_declarations(
             br#"<worksheet><cols><col min="3" max="1" width="8" customWidth="1"/></cols></worksheet>"#
         )
