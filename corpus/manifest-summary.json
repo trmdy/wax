@@ -1,0 +1,38 @@
+{
+  "generatedAt": "2026-07-28T02:00:33Z",
+  "totalCount": 2048,
+  "publicCount": 2044,
+  "privateCount": 4,
+  "uniquePublicSha256Count": 1587,
+  "totalBytes": 132635722,
+  "publicBytes": 132440325,
+  "collections": {
+    "openpyxl-test-data": {
+      "count": 38,
+      "bytes": 1260164
+    },
+    "poi-test-data": {
+      "count": 793,
+      "bytes": 65595513
+    },
+    "sec-edgar": {
+      "count": 24,
+      "bytes": 2663412
+    },
+    "sheetjs-test-files": {
+      "count": 1189,
+      "bytes": 62921236
+    },
+    "spike-local": {
+      "count": 4,
+      "bytes": 195397
+    }
+  },
+  "extensions": {
+    "ods": 37,
+    "xls": 885,
+    "xlsb": 456,
+    "xlsm": 32,
+    "xlsx": 638
+  }
+}
