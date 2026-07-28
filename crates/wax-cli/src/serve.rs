@@ -832,6 +832,7 @@ mod tests {
             "0.1.0",
             "test.xlsx",
             vec![Sheet {
+                col_infos: Vec::new(),
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows: 1,
@@ -847,6 +848,7 @@ mod tests {
     #[test]
     fn csv_uses_display_and_rfc_4180_quoting() {
         let store = store_with_cell(Cell {
+            s: None,
             r: 0,
             c: 0,
             t: CellType::S,
@@ -868,6 +870,7 @@ mod tests {
     fn csv_raw_values_use_protocol_spellings() {
         let cells = [
             WindowCell {
+                s: None,
                 t: CellType::N,
                 v: Some(CellValue::Number(1.25)),
                 d: None,
@@ -875,6 +878,7 @@ mod tests {
                 fmt: None,
             },
             WindowCell {
+                s: None,
                 t: CellType::B,
                 v: Some(CellValue::Bool(false)),
                 d: None,
@@ -882,6 +886,7 @@ mod tests {
                 fmt: None,
             },
             WindowCell {
+                s: None,
                 t: CellType::N,
                 v: None,
                 d: None,

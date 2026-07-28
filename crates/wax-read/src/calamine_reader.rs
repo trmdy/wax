@@ -544,6 +544,7 @@ fn normalize_cell(
     };
 
     Some(Cell {
+        s: None,
         r: position.0,
         c: position.1,
         t: cell_type,
@@ -703,6 +704,7 @@ fn finish_sheet(draft: SheetDraft<'_>, emitted: &mut usize, max_cells: usize) ->
     let mut merges = merges.into_iter().map(a1_range).collect::<Vec<_>>();
     merges.sort();
     Sheet {
+        col_infos: Vec::new(),
         name: name.to_owned(),
         index: index as u32,
         rows,
@@ -715,6 +717,7 @@ fn finish_sheet(draft: SheetDraft<'_>, emitted: &mut usize, max_cells: usize) ->
 
 fn empty_sheet(name: &str, index: usize) -> Sheet {
     Sheet {
+        col_infos: Vec::new(),
         name: name.to_owned(),
         index: index as u32,
         rows: 0,

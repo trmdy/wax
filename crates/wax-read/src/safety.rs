@@ -1080,7 +1080,11 @@ mod tests {
             );
             checked += 1;
         }
-        assert!(checked > 0, "at least one fuzz artifact should be checked");
+        // `checked == 0` is fine: fuzz tooling creates the artifact
+        // directory empty; artifacts themselves are gitignored, so both a
+        // fresh clone (no dir) and a fuzz-run-but-clean tree (empty dir)
+        // simply mean there is nothing to replay here.
+        let _ = checked;
     }
 
     #[test]

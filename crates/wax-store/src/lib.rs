@@ -26,9 +26,11 @@ use std::collections::HashMap;
 use std::fmt;
 use std::mem::size_of;
 
-use wax_core::{Cell, CellType, CellValue, Document, Sheet};
+use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo, Document, Sheet};
 
 const MISSING_STRING: u32 = u32::MAX;
+/// Sentinel in the per-cell style column for "no explicit style".
+const MISSING_STYLE: u32 = u32::MAX;
 
 /// Per-sheet metadata as reported by `open`/`meta`.
 #[derive(Clone, Debug, PartialEq)]
@@ -49,6 +51,9 @@ pub struct WindowCell {
     pub d: Option<String>,
     pub f: Option<String>,
     pub fmt: Option<String>,
+    /// Index into [`WorkbookStore::styles`]. Not exposed on the proto v0
+    /// window wire format; consumed by the W4 writer.
+    pub s: Option<u32>,
 }
 
 /// A rectangular window of cells. `r0`/`c0`/`nr`/`nc` are the *effective*
@@ -193,6 +198,7 @@ struct StoredColumns {
     displays: Vec<u32>,
     formulas: Vec<u32>,
     formats: Vec<u32>,
+    styles: Vec<u32>,
 }
 
 impl StoredColumns {
@@ -207,6 +213,7 @@ impl StoredColumns {
             displays: Vec::with_capacity(capacity),
             formulas: Vec::with_capacity(capacity),
             formats: Vec::with_capacity(capacity),
+            styles: Vec::with_capacity(capacity),
         }
     }
 
@@ -230,6 +237,11 @@ impl StoredColumns {
         self.displays.push(strings.intern_optional(cell.d));
         self.formulas.push(strings.intern_optional(cell.f));
         self.formats.push(strings.intern_optional(cell.fmt));
+        self.styles.push(
+            cell.s
+                .filter(|id| *id != MISSING_STYLE)
+                .unwrap_or(MISSING_STYLE),
+        );
     }
 
     fn cell(&self, index: usize, strings: &StringTable) -> WindowCell {
@@ -252,6 +264,10 @@ impl StoredColumns {
             d: resolve_optional_string(strings, self.displays[index]),
             f: resolve_optional_string(strings, self.formulas[index]),
             fmt: resolve_optional_string(strings, self.formats[index]),
+            s: match self.styles[index] {
+                MISSING_STYLE => None,
+                id => Some(id),
+            },
         }
     }
 
@@ -265,6 +281,7 @@ impl StoredColumns {
         self.displays.shrink_to_fit();
         self.formulas.shrink_to_fit();
         self.formats.shrink_to_fit();
+        self.styles.shrink_to_fit();
     }
 
     fn approx_bytes(&self) -> usize {
@@ -278,6 +295,7 @@ impl StoredColumns {
             allocation_bytes(&self.displays),
             allocation_bytes(&self.formulas),
             allocation_bytes(&self.formats),
+            allocation_bytes(&self.styles),
         ]
         .into_iter()
         .fold(0, usize::saturating_add)
@@ -291,6 +309,7 @@ struct StoredSheet {
     cols: u32,
     truncated: bool,
     merges: Vec<StoredMerge>,
+    col_infos: Vec<ColInfo>,
     row_index: Vec<StoredRow>,
     columns: StoredColumns,
 }
@@ -298,6 +317,7 @@ struct StoredSheet {
 impl StoredSheet {
     fn approx_bytes(&self) -> usize {
         allocation_bytes(&self.merges)
+            .saturating_add(allocation_bytes(&self.col_infos))
             .saturating_add(allocation_bytes(&self.row_index))
             .saturating_add(self.columns.approx_bytes())
     }
@@ -330,6 +350,7 @@ impl std::error::Error for CellOrderError {}
 pub struct WorkbookStoreBuilder {
     strings: StringInterner,
     sheets: Vec<StoredSheet>,
+    styles: Vec<CellStyle>,
 }
 
 impl WorkbookStoreBuilder {
@@ -348,8 +369,13 @@ impl WorkbookStoreBuilder {
             cols: sheet.cols,
             truncated: sheet.truncated,
         };
-        self.add_ordered_sheet(meta, sheet.merges, sheet.cells)
+        self.add_ordered_sheet(meta, sheet.merges, sheet.col_infos, sheet.cells)
             .expect("the stable row-major sort must produce ordered cells");
+    }
+
+    /// Set the workbook-wide style table referenced by cell `s` indexes.
+    pub fn set_styles(&mut self, styles: Vec<CellStyle>) {
+        self.styles = styles;
     }
 
     /// Stream one sheet into the store without first collecting its cells.
@@ -361,6 +387,7 @@ impl WorkbookStoreBuilder {
         &mut self,
         meta: SheetMeta,
         merges: Vec<String>,
+        col_infos: Vec<ColInfo>,
         cells: I,
     ) -> Result<(), CellOrderError>
     where
@@ -409,12 +436,15 @@ impl WorkbookStoreBuilder {
         }
         row_index.shrink_to_fit();
         columns.shrink_to_fit();
+        let mut col_infos = col_infos;
+        col_infos.shrink_to_fit();
         self.sheets.push(StoredSheet {
             name,
             rows: meta.rows,
             cols: meta.cols,
             truncated: meta.truncated,
             merges: stored_merges,
+            col_infos,
             row_index,
             columns,
         });
@@ -423,9 +453,11 @@ impl WorkbookStoreBuilder {
 
     pub fn build(mut self) -> WorkbookStore {
         self.sheets.shrink_to_fit();
+        self.styles.shrink_to_fit();
         WorkbookStore {
             strings: self.strings.finish(),
             sheets: self.sheets,
+            styles: self.styles,
         }
     }
 }
@@ -435,6 +467,7 @@ impl WorkbookStoreBuilder {
 pub struct WorkbookStore {
     strings: StringTable,
     sheets: Vec<StoredSheet>,
+    styles: Vec<CellStyle>,
 }
 
 impl WorkbookStore {
@@ -442,10 +475,61 @@ impl WorkbookStore {
     /// afterwards; the store is the long-lived representation.
     pub fn from_document(document: Document) -> Self {
         let mut builder = WorkbookStoreBuilder::new();
+        builder.set_styles(document.styles);
         for sheet in document.sheets {
             builder.add_sheet(sheet);
         }
         builder.build()
+    }
+
+    /// Workbook-wide style table referenced by [`WindowCell::s`].
+    pub fn styles(&self) -> &[CellStyle] {
+        &self.styles
+    }
+
+    /// Explicit column widths for one sheet; `None` for an unknown sheet.
+    pub fn sheet_col_infos(&self, sheet: u32) -> Option<&[ColInfo]> {
+        Some(&self.sheets.get(usize::try_from(sheet).ok()?)?.col_infos)
+    }
+
+    /// Every merge range of one sheet as full A1 ranges (unclipped);
+    /// `None` for an unknown sheet.
+    pub fn sheet_merges(&self, sheet: u32) -> Option<Vec<String>> {
+        let stored = self.sheets.get(usize::try_from(sheet).ok()?)?;
+        Some(
+            stored
+                .merges
+                .iter()
+                .filter_map(|merge| self.strings.get(merge.a1).map(str::to_owned))
+                .collect(),
+        )
+    }
+
+    /// Visit every stored cell of one sheet in row-major order, materialized
+    /// exactly like [`Self::window`] cells (last duplicate wins is *not*
+    /// collapsed here: duplicates were already last-wins-deduplicated per
+    /// window; the scan emits stored cells in order, so a duplicated
+    /// coordinate yields its later entry last — writers overwrite in order
+    /// and end at the same result). Returns `false` for an unknown sheet.
+    pub fn scan_sheet(&self, sheet: u32, mut visit: impl FnMut(u32, u32, WindowCell)) -> bool {
+        let Some(stored) = usize::try_from(sheet).ok().and_then(|i| self.sheets.get(i)) else {
+            return false;
+        };
+        for (row_offset, indexed_row) in stored.row_index.iter().enumerate() {
+            let start = indexed_row.start as usize;
+            let end = stored
+                .row_index
+                .get(row_offset + 1)
+                .map_or(stored.columns.cols.len(), |row| row.start as usize);
+            for cell_index in start..end {
+                visit(
+                    indexed_row.row,
+                    stored.columns.cols[cell_index],
+                    stored.columns.cell(cell_index, &self.strings),
+                );
+            }
+        }
+        true
     }
 
     pub fn sheet_count(&self) -> u32 {
@@ -540,6 +624,19 @@ impl WorkbookStore {
                     .map(StoredSheet::approx_bytes)
                     .sum::<usize>(),
             )
+            .saturating_add(allocation_bytes(&self.styles))
+            .saturating_add(
+                self.styles
+                    .iter()
+                    .map(|style| {
+                        [&style.font_name, &style.font_color, &style.fill_color]
+                            .into_iter()
+                            .flatten()
+                            .map(|value| value.capacity())
+                            .sum::<usize>()
+                    })
+                    .sum::<usize>(),
+            )
     }
 }
 
@@ -609,6 +706,7 @@ mod tests {
             "test",
             "test.xlsx",
             vec![Sheet {
+                col_infos: Vec::new(),
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows,
@@ -621,8 +719,59 @@ mod tests {
         )
     }
 
+    #[test]
+    fn styles_col_infos_merges_and_scan_survive_from_document() {
+        let mut document = document_with_cells(
+            2,
+            2,
+            vec![
+                number_cell(0, 0, 1.0),
+                number_cell(0, 1, 2.0),
+                number_cell(1, 1, 3.0),
+            ],
+            vec!["A1:B1".to_owned()],
+        );
+        document.styles = vec![CellStyle {
+            bold: true,
+            fill_color: Some("#FFCC00".to_owned()),
+            ..CellStyle::default()
+        }];
+        document.sheets[0].cells[0].s = Some(0);
+        document.sheets[0].col_infos = vec![ColInfo { c: 1, width: 24.5 }];
+
+        let store = WorkbookStore::from_document(document);
+
+        assert_eq!(store.styles().len(), 1);
+        assert!(store.styles()[0].bold);
+        assert_eq!(
+            store.sheet_col_infos(0),
+            Some(&[ColInfo { c: 1, width: 24.5 }][..])
+        );
+        assert_eq!(store.sheet_col_infos(9), None);
+        assert_eq!(store.sheet_merges(0), Some(vec!["A1:B1".to_owned()]));
+        assert_eq!(store.sheet_merges(9), None);
+
+        // The style index reaches window cells...
+        let window = store.window(0, 0, 0, 2, 2).unwrap();
+        assert_eq!(window.rows[0][0].as_ref().unwrap().s, Some(0));
+        assert_eq!(window.rows[0][1].as_ref().unwrap().s, None);
+
+        // ...and the scan visits every cell in row-major order with the
+        // same materialization as window().
+        let mut scanned = Vec::new();
+        assert!(store.scan_sheet(0, |r, c, cell| scanned.push((r, c, cell))));
+        assert!(!store.scan_sheet(9, |_, _, _| {}));
+        assert_eq!(
+            scanned.iter().map(|(r, c, _)| (*r, *c)).collect::<Vec<_>>(),
+            vec![(0, 0), (0, 1), (1, 1)]
+        );
+        assert_eq!(scanned[0].2, window.rows[0][0].clone().unwrap());
+        assert_eq!(scanned[2].2.v, Some(CellValue::Number(3.0)));
+    }
+
     fn number_cell(r: u32, c: u32, value: f64) -> Cell {
         Cell {
+            s: None,
             r,
             c,
             t: CellType::N,
@@ -728,6 +877,7 @@ mod tests {
         let repeated = "same repeated payload";
         let sheets = (0..2)
             .map(|index| Sheet {
+                col_infos: Vec::new(),
                 name: format!("Sheet{index}"),
                 index,
                 rows: 1,
@@ -735,6 +885,7 @@ mod tests {
                 truncated: false,
                 merges: Vec::new(),
                 cells: vec![Cell {
+                    s: None,
                     r: 0,
                     c: 0,
                     t: CellType::S,
@@ -781,6 +932,7 @@ mod tests {
             "test.xlsx",
             vec![
                 Sheet {
+                    col_infos: Vec::new(),
                     name: "First".to_owned(),
                     index: 0,
                     rows: 4,
@@ -794,6 +946,7 @@ mod tests {
                     ],
                 },
                 Sheet {
+                    col_infos: Vec::new(),
                     name: "Second".to_owned(),
                     index: 1,
                     rows: 1,
@@ -801,6 +954,7 @@ mod tests {
                     truncated: true,
                     merges: Vec::new(),
                     cells: vec![Cell {
+                        s: None,
                         r: 0,
                         c: 0,
                         t: CellType::B,
@@ -843,6 +997,7 @@ mod tests {
                     truncated: false,
                 },
                 Vec::new(),
+                Vec::new(),
                 [number_cell(1, 0, 1.0), number_cell(0, 1, 2.0)],
             )
             .unwrap_err();
@@ -858,6 +1013,7 @@ mod tests {
             1,
             2,
             vec![Cell {
+                s: None,
                 r: 0,
                 c: 0,
                 t: CellType::S,
@@ -873,6 +1029,7 @@ mod tests {
             2,
             vec![
                 Cell {
+                    s: None,
                     r: 0,
                     c: 0,
                     t: CellType::S,
@@ -882,6 +1039,7 @@ mod tests {
                     fmt: Some(repeated.clone()),
                 },
                 Cell {
+                    s: None,
                     r: 0,
                     c: 1,
                     t: CellType::S,
@@ -964,6 +1122,7 @@ mod tests {
         let repeated = "repeated display and format payload";
         let cell_count = 10_000_u32;
         let cells = (0..cell_count).map(|row| Cell {
+            s: None,
             r: row,
             c: 0,
             t: CellType::S,
@@ -981,6 +1140,7 @@ mod tests {
                     cols: 1,
                     truncated: false,
                 },
+                Vec::new(),
                 Vec::new(),
                 cells,
             )
@@ -1029,6 +1189,7 @@ mod tests {
                     truncated: false,
                 },
                 Vec::new(),
+                Vec::new(),
                 cells,
             )
             .unwrap();
@@ -1068,6 +1229,7 @@ mod tests {
         for cell in &sheet.cells {
             if cell.r >= r0 && cell.r < r1 && cell.c >= c0 && cell.c < c1 {
                 rows[(cell.r - r0) as usize][(cell.c - c0) as usize] = Some(WindowCell {
+                    s: cell.s,
                     t: cell.t,
                     v: cell.v.clone(),
                     d: cell.d.clone(),
@@ -1119,6 +1281,7 @@ mod tests {
             _ => (CellType::D, Some(CellValue::Text("2026-07-28".to_owned()))),
         };
         Cell {
+            s: None,
             r,
             c,
             t,

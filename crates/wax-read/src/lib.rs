@@ -165,6 +165,7 @@ impl Reader for StubReader {
                 }
             };
             sheets.push(Sheet {
+                col_infos: Vec::new(),
                 name: workbook_sheet.name,
                 index: index as u32,
                 rows: parsed.rows,
@@ -592,6 +593,7 @@ fn finish_cell(builder: CellBuilder) -> Option<Cell> {
         _ => return None,
     };
     Some(Cell {
+        s: None,
         r: builder.row,
         c: builder.col,
         t: cell_type,

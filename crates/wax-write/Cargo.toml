@@ -3,3 +3,7 @@ name = "wax-write"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+wax-core = { path = "../wax-core" }
+wax-store = { path = "../wax-store" }

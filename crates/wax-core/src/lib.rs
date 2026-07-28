@@ -29,6 +29,44 @@ pub struct Cell {
     pub d: Option<String>,
     pub f: Option<String>,
     pub fmt: Option<String>,
+    /// Index into [`Document::styles`]. Additive in schema 1: absent (`None`)
+    /// serializes to nothing, so pre-W4 dumps stay byte-identical.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub s: Option<u32>,
+}
+
+/// Explicit width for one zero-based column, in Excel character units
+/// (the `width` attribute of a `<col>` element). Only columns with an
+/// explicit width appear; everything else uses the consumer's default.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ColInfo {
+    pub c: u32,
+    pub width: f64,
+}
+
+/// Basic cell styling for export-a-copy fidelity. Deliberately minimal:
+/// anything richer (borders, alignment, gradients, themes) is out of the
+/// v1 model and must be reported as dropped by the writer, never silently.
+/// Colors are `#RRGGBB`.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CellStyle {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub italic: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underline: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strike: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -40,6 +78,10 @@ pub struct Sheet {
     pub truncated: bool,
     pub merges: Vec<String>,
     pub cells: Vec<Cell>,
+    /// Explicit column widths. Additive in schema 1: empty serializes to
+    /// nothing, so pre-W4 dumps stay byte-identical.
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "colInfos")]
+    pub col_infos: Vec<ColInfo>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -63,6 +105,10 @@ pub struct Document {
     pub truncated: bool,
     pub sheets: Vec<Sheet>,
     pub warnings: Vec<String>,
+    /// Workbook-wide style table referenced by [`Cell::s`]. Additive in
+    /// schema 1: empty serializes to nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub styles: Vec<CellStyle>,
 }
 
 impl Document {
@@ -86,6 +132,7 @@ impl Document {
             truncated,
             sheets,
             warnings,
+            styles: Vec::new(),
         }
     }
 
@@ -108,6 +155,7 @@ impl Document {
             truncated: false,
             sheets: Vec::new(),
             warnings,
+            styles: Vec::new(),
         }
     }
 }
@@ -143,9 +191,12 @@ mod tests {
                     d: None,
                     f: None,
                     fmt: None,
+                    s: None,
                 }],
+                col_infos: Vec::new(),
             }],
             warnings: Vec::new(),
+            styles: Vec::new(),
         }
     }
 
@@ -164,6 +215,33 @@ mod tests {
                 r#""warnings":[]}"#
             )
         );
+    }
+
+    #[test]
+    fn style_fields_are_invisible_when_absent_and_round_trip_when_present() {
+        // Absent W4 fields must keep pre-W4 dumps byte-identical; the exact
+        // serialization is asserted by the test above. Present fields must
+        // serialize additively and round-trip.
+        let mut expected = document();
+        expected.styles = vec![CellStyle {
+            bold: true,
+            font_size: Some(11.0),
+            fill_color: Some("#FFCC00".to_owned()),
+            ..CellStyle::default()
+        }];
+        expected.sheets[0].cells[0].s = Some(0);
+        expected.sheets[0].col_infos = vec![ColInfo { c: 2, width: 17.25 }];
+
+        let json = serde_json::to_string(&expected).expect("document should serialize");
+        assert!(json.contains(r#""s":0"#));
+        assert!(json.contains(r#""colInfos":[{"c":2,"width":17.25}]"#));
+        assert!(
+            json.contains(r##""styles":[{"bold":true,"fontSize":11.0,"fillColor":"#FFCC00"}]"##)
+        );
+        assert!(!json.contains("italic"));
+
+        let actual: Document = serde_json::from_str(&json).expect("document should deserialize");
+        assert_eq!(actual, expected);
     }
 
     #[test]
