@@ -51,7 +51,7 @@
       "branch": "agent/wax-w1c-oracle",
       "worktree": ".worktrees/w1c",
       "bee": "wax-w1c",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "harness/oracle/**"
       ],
