@@ -9,9 +9,13 @@ readonly REPO_ROOT
 readonly CI_WORKFLOW="${REPO_ROOT}/.github/workflows/ci.yml"
 readonly RELEASE_WORKFLOW="${REPO_ROOT}/.github/workflows/release.yml"
 readonly CHECK_SCRIPT="${SCRIPT_DIR}/check.sh"
+readonly PACKAGE_SCRIPT="${SCRIPT_DIR}/package.sh"
+readonly PACKAGE_TEST="${SCRIPT_DIR}/test-package.sh"
 
 for required_file in \
   "$CHECK_SCRIPT" \
+  "$PACKAGE_SCRIPT" \
+  "$PACKAGE_TEST" \
   "$CI_WORKFLOW" \
   "$RELEASE_WORKFLOW"; do
   if [[ ! -f "$required_file" ]]; then
@@ -25,8 +29,13 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   exit 1
 fi
 
+printf '==> bash syntax\n'
+bash -n "$CHECK_SCRIPT" "${SCRIPT_DIR}/check-ci-defs.sh" \
+  "$PACKAGE_SCRIPT" "$PACKAGE_TEST"
+
 printf '==> shellcheck\n'
-shellcheck "$CHECK_SCRIPT" "${SCRIPT_DIR}/check-ci-defs.sh"
+shellcheck "$CHECK_SCRIPT" "${SCRIPT_DIR}/check-ci-defs.sh" \
+  "$PACKAGE_SCRIPT" "$PACKAGE_TEST"
 
 if command -v actionlint >/dev/null 2>&1; then
   printf '==> actionlint\n'
@@ -42,5 +51,8 @@ else
   printf 'ERROR: actionlint is unavailable and no YAML parser was found\n' >&2
   exit 1
 fi
+
+printf '==> package script tests\n'
+"$PACKAGE_TEST"
 
 printf 'CI definitions are valid.\n'
