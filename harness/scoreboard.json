@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T03:28:59Z",
+  "generatedAt": "2026-07-28T03:31:17Z",
   "filesAttempted": 2048,
   "filesSkipped": 0,
   "metrics": {
@@ -51,21 +51,21 @@
     "parseTimeMs": {
       "wax": {
         "p50": 0,
-        "p95": 4
+        "p95": 5
       },
       "sheetjs": {
-        "p50": 9,
-        "p95": 120
+        "p50": 8,
+        "p95": 94
       }
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 2703360,
+        "p50": 2736128,
         "max": 1076363264
       },
       "sheetjs": {
-        "p50": 93323264,
-        "max": 1240825856
+        "p50": 93274112,
+        "max": 1246330880
       }
     },
     "windowLatencyMs": {

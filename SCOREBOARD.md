@@ -1,6 +1,6 @@
 # wax compatibility scoreboard
 
-Generated: `2026-07-28T03:28:59Z`
+Generated: `2026-07-28T03:31:17Z`
 
 Corpus: 2048 attempted, 0 skipped.
 
@@ -12,9 +12,9 @@ Corpus: 2048 attempted, 0 skipped.
 | display-string match % | 76.15% (2190072/2875970) | reference |
 | formula fidelity % | 18.80% (85580/455164) | reference |
 | cached-result fidelity % | 52.73% (240011/455164) | reference |
-| p50 parse time | 0 ms | 9 ms |
-| p95 parse time | 4 ms | 120 ms |
-| peak RSS (p50 / max) | 2.58 MiB / 1.00 GiB | 89.00 MiB / 1.16 GiB |
+| p50 parse time | 0 ms | 8 ms |
+| p95 parse time | 5 ms | 94 ms |
+| peak RSS (p50 / max) | 2.61 MiB / 1.00 GiB | 88.95 MiB / 1.16 GiB |
 | window latency | n/a | n/a |
 
 ## Per-extension compatibility
