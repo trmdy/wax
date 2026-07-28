@@ -1,8 +1,8 @@
 # wax mismatch triage
 
-Generated: `2026-07-28T03:44:42Z`
+Generated: `2026-07-28T09:10:59Z`
 
-Files compared: 2048.
+Files compared: 2044.
 
 Counts include private corpus files; example paths deliberately omit them.
 
@@ -10,15 +10,16 @@ Counts include private corpus files; example paths deliberately omit them.
 
 | Category | Occurrences | Example files |
 | --- | ---: | --- |
-| <code>bad_zip</code> | 41 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/null_file.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/reader/nonstandard_workbook_name.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/54764-2.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/54764.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/60825.xlsx</code> |
-| <code>internal</code> | 25 | <code>corpus/files/poi/test-data/spreadsheet/61045_govdocs1_626534.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/61300.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/64130.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/Simple.xlsb</code>, <code>corpus/files/poi/test-data/spreadsheet/clusterfuzz-testcase-minimized-POIHSSFFuzzer-4651309315719168.xls</code> |
-| <code>unsupported</code> | 18 | <code>corpus/files/poi/test-data/spreadsheet/35897-type4.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/50833.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51832.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/58616.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/60284.xls</code> |
+| <code>bad_zip</code> | 66 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/null_file.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/reader/nonstandard_workbook_name.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/58616.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/60825.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/61045_govdocs1_626534.xls</code> |
+| <code>bomb</code> | 16 | <code>corpus/files/poi/test-data/spreadsheet/35897-type4.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/50833.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51535.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51832.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/54764-2.xlsx</code> |
+| <code>internal</code> | 3 | <code>corpus/files/poi/test-data/spreadsheet/64130.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/Simple.xlsb</code>, <code>corpus/files/poi/test-data/spreadsheet/clusterfuzz-testcase-minimized-POIHSSFFuzzer-5436547081830400.xls</code> |
+| <code>unsupported</code> | 3 | <code>corpus/files/sheetjs/test_files/apachepoi_FormulaEvalTestData.xls.xlsb</code>, <code>corpus/files/sheetjs/test_files/apachepoi_FormulaEvalTestData_Copy.xlsx.xlsb</code>, <code>corpus/files/sheetjs/test_files/apachepoi_IntersectionPtg.xls.xlsb</code> |
 
 ## Value mismatches by type pair
 
 | Category | Occurrences | Example files |
 | --- | ---: | --- |
-| <code>wax:d / SheetJS:d</code> | 112485 | <code>corpus/files/poi/test-data/spreadsheet/123233_charts.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/45538_classic_Header.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/54071.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/58747.xlsx</code> |
+| <code>wax:d / SheetJS:d</code> | 112483 | <code>corpus/files/poi/test-data/spreadsheet/123233_charts.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/45538_classic_Header.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/54071.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/58747.xlsx</code> |
 | <code>wax:n / SheetJS:d</code> | 78005 | <code>corpus/files/openpyxl/3.1.5/openpyxl/worksheet/tests/data/test_datetime.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/12561-1.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/57181.xlsm</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code> |
 | <code>wax:missing / SheetJS:s</code> | 23268 | <code>corpus/files/poi/test-data/spreadsheet/12843-1.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/44891.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/54206.xls</code> |
 | <code>wax:missing / SheetJS:n</code> | 5235 | <code>corpus/files/openpyxl/3.1.5/openpyxl/packaging/tests/data/bug137.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/bug137.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/contains_chartsheets.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/12843-1.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code> |
@@ -40,7 +41,7 @@ Counts include private corpus files; example paths deliberately omit them.
 | --- | ---: | --- |
 | <code>###0.00;-###0.00</code> | 14592 | <code>corpus/files/poi/test-data/spreadsheet/49609.xlsx</code>, <code>corpus/files/sheetjs/test_files/apachepoi_49609.xlsx</code> |
 | <code>General</code> | 8537 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/contains_chartsheets.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/123233_charts.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/43623.xls</code> |
-| <code>m/d/yy</code> | 6554 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/complex-styles.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/empty_with_no_properties.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/genuine/empty-with-styles.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/genuine/sample.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/worksheet/tests/data/test_datetime.xlsx</code> |
+| <code>m/d/yy</code> | 6504 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/complex-styles.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/empty_with_no_properties.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/genuine/empty-with-styles.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/genuine/sample.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/worksheet/tests/data/test_datetime.xlsx</code> |
 | <code>hhmm</code> | 6110 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
 | <code>[m]</code> | 6106 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
 | <code>[mm]</code> | 6106 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
@@ -50,11 +51,11 @@ Counts include private corpus files; example paths deliberately omit them.
 | <code>h</code> | 5690 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
 | <code>hh</code> | 5682 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
 | <code># ?/?</code> | 1668 | <code>corpus/files/poi/test-data/spreadsheet/54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls.xlsb</code>, <code>corpus/files/sheetjs/test_files/fraction-test.xls</code>, <code>corpus/files/sheetjs/test_files/number_format.ods</code> |
-| <code>#,##0</code> | 1097 | <code>corpus/files/poi/test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5937385319563264.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/testEXCEL_5.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/testEXCEL_95.xls</code>, <code>corpus/files/sheetjs/test_files/number_format.ods</code> |
 | <code>#\ ??/?????????</code> | 1062 | <code>corpus/files/poi/test-data/spreadsheet/54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls.xlsb</code> |
 | <code>_("$"* #,##0.00_);_("$"* \(#,##0.00\);_("$"* "-"??_);_(@_)</code> | 723 | <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_53446.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_53446.xls.xlsb</code> |
 | <code>0</code> | 313 | <code>corpus/files/sheetjs/test_files/formula_stress_test.ods</code>, <code>corpus/files/sheetjs/test_files/number_format.ods</code>, <code>corpus/files/sheetjs/test_files/roo_bbu.ods</code> |
 | <code>#\ ?/2</code> | 252 | <code>corpus/files/poi/test-data/spreadsheet/54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls.xlsb</code> |
-| <code>0.0</code> | 193 | <code>corpus/files/poi/test-data/spreadsheet/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5937385319563264.xlsx</code> |
 | <code>0.00</code> | 175 | <code>corpus/files/poi/test-data/spreadsheet/25183.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_25183.xls</code>, <code>corpus/files/sheetjs/test_files/number_format.ods</code> |
 | <code># ??/??</code> | 163 | <code>corpus/files/poi/test-data/spreadsheet/54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls.xlsb</code>, <code>corpus/files/sheetjs/test_files/number_format.ods</code>, <code>corpus/files/sheetjs/test_files/number_format.xls</code> |
+| <code>_(* #,##0_);_(* \(#,##0\);_(* "-"??_);_(@_)</code> | 156 | <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_15228.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_15228.xls.xlsb</code> |
+| <code>[$-1010409]0.000%</code> | 132 | <code>corpus/files/poi/test-data/spreadsheet/47251.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_47251.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_47251.xls.xlsb</code> |
