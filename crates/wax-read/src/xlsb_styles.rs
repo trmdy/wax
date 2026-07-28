@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Cursor, Read, Write};
 use std::path::Path;
 
+use zip::write::SimpleFileOptions;
 use zip::ZipArchive;
+use zip::ZipWriter;
 
 use super::{
     builtin_format, explicit_format, parse_relationships, read_part, read_part_optional,
-    relationships_path, resolve_part, zip_lookup,
+    relationships_path, resolve_part, zip_lookup, zip_part_key,
 };
 
 #[derive(Default)]
@@ -19,6 +21,7 @@ pub(super) struct XlsbStyleSupplement {
 pub(super) struct XlsbCellMetadata {
     pub(super) format: Option<String>,
     pub(super) cached_error: Option<u8>,
+    pub(super) cached_empty_string: bool,
 }
 
 impl XlsbStyleSupplement {
@@ -80,6 +83,60 @@ impl XlsbStyleSupplement {
     }
 }
 
+pub(super) fn normalize_legacy_bundle_workbook(
+    path: &Path,
+) -> Result<Option<Cursor<Vec<u8>>>, String> {
+    let input = File::open(path).map_err(|error| format!("could not open package: {error}"))?;
+    let mut archive =
+        ZipArchive::new(BufReader::new(input)).map_err(|error| format!("bad zip: {error}"))?;
+    let lookup = zip_lookup(&mut archive)?;
+    let workbook_path = read_part_optional(&mut archive, &lookup, "_rels/.rels")?
+        .and_then(|xml| {
+            parse_relationships(&xml).ok().and_then(|relationships| {
+                relationships
+                    .into_iter()
+                    .find(|relationship| relationship.kind.ends_with("/officeDocument"))
+                    .map(|relationship| resolve_part("", &relationship.target))
+            })
+        })
+        .unwrap_or_else(|| "xl/workbook.bin".to_owned());
+    let workbook = read_part(&mut archive, &lookup, &workbook_path)?;
+    let Some(normalized_workbook) = rewrite_legacy_bundle_sheets(&workbook)? else {
+        return Ok(None);
+    };
+
+    let workbook_key = zip_part_key(&workbook_path);
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("could not inspect zip entry: {error}"))?;
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().to_owned();
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("could not read {name}: {error}"))?;
+        writer
+            .start_file(&name, SimpleFileOptions::default())
+            .map_err(|error| format!("could not normalize {name}: {error}"))?;
+        writer
+            .write_all(if zip_part_key(&name) == workbook_key {
+                &normalized_workbook
+            } else {
+                &bytes
+            })
+            .map_err(|error| format!("could not normalize {name}: {error}"))?;
+    }
+    let mut reader = writer
+        .finish()
+        .map_err(|error| format!("could not finish normalized package: {error}"))?;
+    reader.set_position(0);
+    Ok(Some(reader))
+}
+
 struct BinarySheet {
     name: String,
     relationship_id: String,
@@ -92,25 +149,57 @@ fn parse_workbook_sheets(bytes: &[u8]) -> Result<Vec<BinarySheet>, String> {
         if record.kind != 0x009C || record.data.len() < 16 {
             continue;
         }
-        let Some((relationship_id, consumed)) = parse_nullable_wide_string(&record.data[8..])?
-        else {
-            continue;
-        };
-        let name_offset = 8_usize
-            .checked_add(consumed)
-            .ok_or_else(|| "BrtBundleSh string offset overflow".to_owned())?;
-        let (name, _) = parse_wide_string(
-            record
-                .data
-                .get(name_offset..)
-                .ok_or_else(|| "truncated BrtBundleSh sheet name".to_owned())?,
-        )?;
-        sheets.push(BinarySheet {
-            name,
-            relationship_id,
-        });
+        sheets.push(parse_bundle_sheet(record.data)?.0);
     }
     Ok(sheets)
+}
+
+fn parse_bundle_sheet(data: &[u8]) -> Result<(BinarySheet, usize), String> {
+    // BrtBundleSh normally stores its relationship string after eight fixed
+    // bytes. Excel 2007 Beta 2 inserted a four-byte tab id first. Accept both
+    // layouts only when the two strings consume the record exactly.
+    for string_offset in [8_usize, 12] {
+        let Some(tail) = data.get(string_offset..) else {
+            continue;
+        };
+        let Ok(Some((relationship_id, relationship_len))) = parse_nullable_wide_string(tail) else {
+            continue;
+        };
+        let Some(name_tail) = tail.get(relationship_len..) else {
+            continue;
+        };
+        let Ok((name, name_len)) = parse_wide_string(name_tail) else {
+            continue;
+        };
+        if relationship_len + name_len == tail.len() {
+            return Ok((
+                BinarySheet {
+                    name,
+                    relationship_id,
+                },
+                string_offset,
+            ));
+        }
+    }
+    Err("invalid BrtBundleSh strings".to_owned())
+}
+
+fn rewrite_legacy_bundle_sheets(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    let mut rewritten = Vec::with_capacity(bytes.len());
+    let mut changed = false;
+    for record in BinaryRecordIter::new(bytes) {
+        let record = record?;
+        if record.kind == 0x009C && parse_bundle_sheet(record.data)?.1 == 12 {
+            let mut normalized = Vec::with_capacity(record.data.len() - 4);
+            normalized.extend_from_slice(&record.data[..8]);
+            normalized.extend_from_slice(&record.data[12..]);
+            push_binary_record(&mut rewritten, record.kind, &normalized);
+            changed = true;
+        } else {
+            push_binary_record(&mut rewritten, record.kind, record.data);
+        }
+    }
+    Ok(changed.then_some(rewritten))
 }
 
 fn parse_styles(bytes: &[u8]) -> Result<Vec<Option<String>>, String> {
@@ -164,12 +253,15 @@ fn parse_sheet_styles(
                 let cached_error = (record.kind == 0x000B)
                     .then(|| record.data.get(8).copied())
                     .flatten();
-                if format.is_some() || cached_error.is_some() {
+                let cached_empty_string =
+                    record.kind == 0x0008 && record.data.get(8..12) == Some(&0_u32.to_le_bytes());
+                if format.is_some() || cached_error.is_some() || cached_empty_string {
                     styles.insert(
                         (row, col),
                         XlsbCellMetadata {
                             format,
                             cached_error,
+                            cached_empty_string,
                         },
                     );
                 }
@@ -227,6 +319,28 @@ impl<'a> BinaryRecordIter<'a> {
     fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, offset: 0 }
     }
+}
+
+fn push_binary_record(target: &mut Vec<u8>, kind: u16, data: &[u8]) {
+    if kind < 0x80 {
+        target.push(kind as u8);
+    } else {
+        target.push((kind as u8 & 0x7F) | 0x80);
+        target.push((kind >> 7) as u8);
+    }
+    let mut len = data.len();
+    loop {
+        let mut byte = (len & 0x7F) as u8;
+        len >>= 7;
+        if len != 0 {
+            byte |= 0x80;
+        }
+        target.push(byte);
+        if len == 0 {
+            break;
+        }
+    }
+    target.extend_from_slice(data);
 }
 
 impl<'a> Iterator for BinaryRecordIter<'a> {
@@ -321,6 +435,7 @@ mod tests {
             Some(&XlsbCellMetadata {
                 format: Some(code.to_owned()),
                 cached_error: None,
+                cached_empty_string: false,
             })
         );
     }
@@ -341,6 +456,27 @@ mod tests {
             Some(&XlsbCellMetadata {
                 format: None,
                 cached_error: Some(0x07),
+                cached_empty_string: false,
+            })
+        );
+    }
+
+    #[test]
+    fn preserves_empty_cached_formula_strings_skipped_by_sparse_ranges() {
+        let mut sheet = Vec::new();
+        push_record(&mut sheet, 0x0000, &6_u32.to_le_bytes());
+        let mut formula_string = 2_u32.to_le_bytes().to_vec();
+        formula_string.extend_from_slice(&[0, 0, 0, 0]);
+        formula_string.extend_from_slice(&0_u32.to_le_bytes());
+        push_record(&mut sheet, 0x0008, &formula_string);
+
+        let cells = parse_sheet_styles(&sheet, &[]).unwrap();
+        assert_eq!(
+            cells.get(&(6, 2)),
+            Some(&XlsbCellMetadata {
+                format: None,
+                cached_error: None,
+                cached_empty_string: true,
             })
         );
     }
@@ -358,26 +494,27 @@ mod tests {
         assert_eq!(sheets[0].name, "Costs");
     }
 
+    #[test]
+    fn rewrites_excel_2007_beta_bundle_sheet_layout() {
+        let mut payload = vec![0; 8];
+        payload.extend_from_slice(&1_u32.to_le_bytes());
+        push_wide_string(&mut payload, "rId1");
+        push_wide_string(&mut payload, "Sheet1");
+        let mut workbook = Vec::new();
+        push_record(&mut workbook, 0x009C, &payload);
+
+        let rewritten = rewrite_legacy_bundle_sheets(&workbook)
+            .unwrap()
+            .expect("legacy record should be rewritten");
+        let sheets = parse_workbook_sheets(&rewritten).unwrap();
+        assert_eq!(sheets.len(), 1);
+        assert_eq!(sheets[0].relationship_id, "rId1");
+        assert_eq!(sheets[0].name, "Sheet1");
+        assert_eq!(rewritten.len(), workbook.len() - 4);
+    }
+
     fn push_record(target: &mut Vec<u8>, kind: u16, data: &[u8]) {
-        if kind < 0x80 {
-            target.push(kind as u8);
-        } else {
-            target.push((kind as u8 & 0x7F) | 0x80);
-            target.push((kind >> 7) as u8);
-        }
-        let mut len = data.len();
-        loop {
-            let mut byte = (len & 0x7F) as u8;
-            len >>= 7;
-            if len != 0 {
-                byte |= 0x80;
-            }
-            target.push(byte);
-            if len == 0 {
-                break;
-            }
-        }
-        target.extend_from_slice(data);
+        push_binary_record(target, kind, data);
     }
 
     fn push_wide_string(target: &mut Vec<u8>, value: &str) {
