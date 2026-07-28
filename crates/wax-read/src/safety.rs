@@ -315,6 +315,20 @@ fn preflight_biff_records(
         if kind == 0x0200 {
             check_declared_extent(&data, options.max_declared_cells)?;
         }
+        if kind == 0x00BD {
+            let malformed = data.len() < 6 || {
+                let first_col = u16::from_le_bytes([data[2], data[3]]);
+                let last_col = u16::from_le_bytes([data[data.len() - 2], data[data.len() - 1]]);
+                last_col < first_col
+                    || data.len() != 6 + 6 * (usize::from(last_col - first_col) + 1)
+            };
+            if malformed {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    "malformed BIFF MulRk record",
+                ));
+            }
+        }
         if kind == 0x0085 {
             if data.len() < 4 {
                 return Err(SafetyError::new(
@@ -892,6 +906,18 @@ mod tests {
 
         assert_eq!(error.code(), ErrorCode::BadZip);
         assert!(error.message().contains("FAT sector"));
+    }
+
+    #[test]
+    fn legacy_biff_rejects_the_mulrk_reversed_columns_fuzz_regression() {
+        let error = preflight_path(
+            &legacy_seed("calamine-mulrk-reversed-cols.xls"),
+            ReaderOptions::default(),
+        )
+        .expect_err("reversed MulRk column bounds should be rejected before calamine");
+
+        assert_eq!(error.code(), ErrorCode::BadZip);
+        assert!(error.message().contains("MulRk"));
     }
 
     #[test]
