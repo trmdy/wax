@@ -1,7 +1,7 @@
 {
   "mission": "wax-v1",
-  "wave": "W1",
-  "coordinator": "CL.661",
+  "wave": "W2",
+  "coordinator": "CL.988e",
   "updated": "2026-07-28",
   "states": [
     "planned",
@@ -88,8 +88,54 @@
       ],
       "brief": "docs/briefs/w1e.md",
       "beeId": "CO.e92"
+    },
+    {
+      "id": "w2a",
+      "slug": "reader",
+      "title": "Calamine reader + normalization (values, epochs, formulas, merges, fmt codes)",
+      "branch": "agent/wax-w2a-reader",
+      "worktree": ".worktrees/w2a",
+      "bee": "wax-w2a",
+      "state": "planned",
+      "owns": [
+        "crates/wax-read/**",
+        "crates/wax-cli/**",
+        "crates/wax-core/** (additive only)"
+      ],
+      "brief": "docs/briefs/w2a.md",
+      "beeId": null
+    },
+    {
+      "id": "w2b",
+      "slug": "formats",
+      "title": "ECMA-376 number-format interpreter + corpus format test-set (mined first)",
+      "branch": "agent/wax-w2b-formats",
+      "worktree": ".worktrees/w2b",
+      "bee": "wax-w2b",
+      "state": "planned",
+      "owns": [
+        "crates/wax-fmt/**",
+        "harness/formats/**"
+      ],
+      "brief": "docs/briefs/w2b.md",
+      "beeId": null
+    },
+    {
+      "id": "w2c",
+      "slug": "harness",
+      "title": "Harness/scoring upgrades: display match, per-ext + per-format breakdowns, triage",
+      "branch": "agent/wax-w2c-harness",
+      "worktree": ".worktrees/w2c",
+      "bee": "wax-w2c",
+      "state": "planned",
+      "owns": [
+        "harness/wax-harness/**",
+        "harness/run.sh"
+      ],
+      "brief": "docs/briefs/w2c.md",
+      "beeId": null
     }
   ],
-  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send.",
-  "waveStatus": "W1 gate passed 2026-07-28: harness/run.sh end-to-end on 2048-file corpus, real SCOREBOARD.md committed. All five shards merged; bees retired. W2 not started (awaiting operator go)."
+  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest.",
+  "waveStatus": "W2 live 2026-07-28 (operator go, two amendments: W2B mines corpus formats first + commits test-set; scoreboard delta committed at every shard merge). W1 gate passed; history above. W2 gate: xlsx opens >=90%, cell-value fidelity >=95% on opened files, display coverage climbing with format test-set committed."
 }
