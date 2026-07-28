@@ -1,0 +1,2456 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-07-28T02:32:26.409Z",
+  "oracle": "SheetJS 0.20.3 normalized dumps",
+  "maxCellsPerFile": 200000,
+  "totals": {
+    "manifestFiles": 2048,
+    "filesScanned": 2048,
+    "filesOpened": 1998,
+    "filesFailed": 50,
+    "oracleAborts": 1,
+    "filesMissing": 0,
+    "privateFilesScanned": 4,
+    "truncatedFiles": 4,
+    "cellsSeen": 2922822,
+    "formattedCells": 909293,
+    "distinctCodes": 487
+  },
+  "formats": [
+    {
+      "code": "#,##0 ;[Red](#,##0)",
+      "cellCount": 106179,
+      "fileCount": 7
+    },
+    {
+      "code": "_(\"$\"* #,##0.00_);_(\"$\"* \\(#,##0.00\\);_(\"$\"* \"-\"??_);_(@_)",
+      "cellCount": 67502,
+      "fileCount": 16
+    },
+    {
+      "code": "#,##0.00",
+      "cellCount": 55547,
+      "fileCount": 46
+    },
+    {
+      "code": "@",
+      "cellCount": 52278,
+      "fileCount": 206
+    },
+    {
+      "code": "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)",
+      "cellCount": 41735,
+      "fileCount": 10
+    },
+    {
+      "code": "#,##0",
+      "cellCount": 32964,
+      "fileCount": 89
+    },
+    {
+      "code": "_(* #,##0_);_(* \\(#,##0\\);_(* \"-\"??_);_(@_)",
+      "cellCount": 26484,
+      "fileCount": 19
+    },
+    {
+      "code": "#,##0 ;(#,##0)",
+      "cellCount": 24287,
+      "fileCount": 32
+    },
+    {
+      "code": "\"$\"#,##0_);[Red]\\(\"$\"#,##0\\)",
+      "cellCount": 21850,
+      "fileCount": 16
+    },
+    {
+      "code": "dd\\.mm\\.yyyy",
+      "cellCount": 19455,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00",
+      "cellCount": 18189,
+      "fileCount": 111
+    },
+    {
+      "code": "_-* #,##0.00\" TL\"_-;\\-* #,##0.00\" TL\"_-;_-* \\-??\" TL\"_-;_-@_-",
+      "cellCount": 18018,
+      "fileCount": 3
+    },
+    {
+      "code": "\"$\"#,##0.00",
+      "cellCount": 16301,
+      "fileCount": 28
+    },
+    {
+      "code": "0",
+      "cellCount": 15275,
+      "fileCount": 106
+    },
+    {
+      "code": "###0.00;-###0.00",
+      "cellCount": 14768,
+      "fileCount": 4
+    },
+    {
+      "code": "[hh]",
+      "cellCount": 12572,
+      "fileCount": 5
+    },
+    {
+      "code": "[h]",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "[s]",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "[ss]",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "h",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "hhmm",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "s",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "ss",
+      "cellCount": 12536,
+      "fileCount": 5
+    },
+    {
+      "code": "[m]",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "[mm]",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "hh",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "hm",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "ss.0",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "ss.00",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "ss.000",
+      "cellCount": 12500,
+      "fileCount": 1
+    },
+    {
+      "code": "0.000",
+      "cellCount": 12309,
+      "fileCount": 14
+    },
+    {
+      "code": "# ?/?",
+      "cellCount": 11332,
+      "fileCount": 13
+    },
+    {
+      "code": "0.0%",
+      "cellCount": 10169,
+      "fileCount": 38
+    },
+    {
+      "code": "_(\"$\"* #,##0_);_(\"$\"* \\(#,##0\\);_(\"$\"* \"-\"??_);_(@_)",
+      "cellCount": 8429,
+      "fileCount": 10
+    },
+    {
+      "code": "dd\\-mmm\\-yy",
+      "cellCount": 7998,
+      "fileCount": 2
+    },
+    {
+      "code": "###0.00;\\-###0.00",
+      "cellCount": 7384,
+      "fileCount": 2
+    },
+    {
+      "code": "#",
+      "cellCount": 7016,
+      "fileCount": 4
+    },
+    {
+      "code": "m/d/yy",
+      "cellCount": 6983,
+      "fileCount": 141
+    },
+    {
+      "code": "0%",
+      "cellCount": 5888,
+      "fileCount": 91
+    },
+    {
+      "code": "###,##0.00;\\-###,##0.00;0.00",
+      "cellCount": 5043,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00%",
+      "cellCount": 4836,
+      "fileCount": 129
+    },
+    {
+      "code": "_(\"$ \"#,##0_);_(\"$ \"(#,##0)",
+      "cellCount": 4776,
+      "fileCount": 24
+    },
+    {
+      "code": "_-* #,##0_-;\"\";_-* #,##0_-;_-@_-",
+      "cellCount": 4445,
+      "fileCount": 1
+    },
+    {
+      "code": "_-* #,##0.00_-;\"\";_-* #,##0_-;_-@_-",
+      "cellCount": 4438,
+      "fileCount": 1
+    },
+    {
+      "code": "\"$\"#,##0",
+      "cellCount": 3624,
+      "fileCount": 21
+    },
+    {
+      "code": "0.0",
+      "cellCount": 3284,
+      "fileCount": 38
+    },
+    {
+      "code": "mm/dd/yyyy",
+      "cellCount": 2863,
+      "fileCount": 9
+    },
+    {
+      "code": "\\$#,##0;[Red]\\-\\$#,##0",
+      "cellCount": 2815,
+      "fileCount": 1
+    },
+    {
+      "code": "[=0]?;[<4.16666666666667][hh]:mm:ss;[hh]:mm",
+      "cellCount": 2625,
+      "fileCount": 1
+    },
+    {
+      "code": "[$$-0409]#,##0.00_);([$$-0409]#,##0.00)",
+      "cellCount": 2505,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0_ ;[Red]\\-#,##0\\",
+      "cellCount": 2247,
+      "fileCount": 5
+    },
+    {
+      "code": "\\$#,##0;[Red]\\(\\$#,##0\\);\\-",
+      "cellCount": 2217,
+      "fileCount": 2
+    },
+    {
+      "code": "#,##0_);[Red]\\(#,##0\\)",
+      "cellCount": 2166,
+      "fileCount": 2
+    },
+    {
+      "code": "m/d/yy h:mm",
+      "cellCount": 2120,
+      "fileCount": 16
+    },
+    {
+      "code": "#,##0.00;(#,##0.00)",
+      "cellCount": 1941,
+      "fileCount": 24
+    },
+    {
+      "code": "[$$-0409]#,##0",
+      "cellCount": 1680,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.000_);\\(#,##0.000\\)",
+      "cellCount": 1680,
+      "fileCount": 1
+    },
+    {
+      "code": "#0.00",
+      "cellCount": 1602,
+      "fileCount": 3
+    },
+    {
+      "code": "d-mmm",
+      "cellCount": 1601,
+      "fileCount": 18
+    },
+    {
+      "code": "#,##0.0_);(#,##0.0)",
+      "cellCount": 1558,
+      "fileCount": 14
+    },
+    {
+      "code": "mmm\\-yyyy",
+      "cellCount": 1554,
+      "fileCount": 3
+    },
+    {
+      "code": "m\\/d\\/yyyy",
+      "cellCount": 1533,
+      "fileCount": 4
+    },
+    {
+      "code": "_(\"$\"* #,##0_);_(\"$\"* \\(#,##0\\);_(\"$\"* \"-\"_);_(@_)",
+      "cellCount": 1532,
+      "fileCount": 22
+    },
+    {
+      "code": "_(* #,##0_);_(* \\(#,##0\\);_(* \"-\"_);_(@_)",
+      "cellCount": 1520,
+      "fileCount": 10
+    },
+    {
+      "code": "\"$\"#,##0.00_);\\(\"$\"#,##0.00\\)",
+      "cellCount": 1279,
+      "fileCount": 5
+    },
+    {
+      "code": "#,##0.0000",
+      "cellCount": 1273,
+      "fileCount": 8
+    },
+    {
+      "code": "mmm-yy",
+      "cellCount": 1272,
+      "fileCount": 17
+    },
+    {
+      "code": "mm\\/dd\\/yyyy",
+      "cellCount": 1252,
+      "fileCount": 1
+    },
+    {
+      "code": "_(* #,##0.0000_);_(* \\(#,##0.0000\\);_(* \"-\"??_);_(@_)",
+      "cellCount": 1209,
+      "fileCount": 3
+    },
+    {
+      "code": "[Red]#,##0;\\-#,##0;0",
+      "cellCount": 1207,
+      "fileCount": 1
+    },
+    {
+      "code": "# ??/??",
+      "cellCount": 1114,
+      "fileCount": 7
+    },
+    {
+      "code": "#,##0.0",
+      "cellCount": 1096,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ???/???",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ??/100",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ??/16",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ?/10",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ?/2",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ?/4",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#\\ ?/8",
+      "cellCount": 1092,
+      "fileCount": 6
+    },
+    {
+      "code": "#0",
+      "cellCount": 1068,
+      "fileCount": 3
+    },
+    {
+      "code": "#\\ ??/?????????",
+      "cellCount": 1062,
+      "fileCount": 3
+    },
+    {
+      "code": "dd/mm/yyyy;dd/mm/yyyy;_-* \"\"??_-;_-@_-",
+      "cellCount": 988,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-F400]h:mm:ss\\ AM/PM;[$-F400]h:mm:ss\\ AM/PM;_-* \"\"??_-;_-@_-",
+      "cellCount": 986,
+      "fileCount": 1
+    },
+    {
+      "code": "h:mm",
+      "cellCount": 948,
+      "fileCount": 15
+    },
+    {
+      "code": "h:mm;@",
+      "cellCount": 930,
+      "fileCount": 6
+    },
+    {
+      "code": "#,##0\"  \";\\-#,##0\"  \";\\ \\-\\-\"  \";@\"  \"",
+      "cellCount": 738,
+      "fileCount": 1
+    },
+    {
+      "code": "m/d/yyyy;@",
+      "cellCount": 716,
+      "fileCount": 10
+    },
+    {
+      "code": "m\"月\"d\"日\"",
+      "cellCount": 711,
+      "fileCount": 3
+    },
+    {
+      "code": "0.00000000000",
+      "cellCount": 684,
+      "fileCount": 6
+    },
+    {
+      "code": "[=0]?;0%",
+      "cellCount": 657,
+      "fileCount": 1
+    },
+    {
+      "code": "##;##;\"\"",
+      "cellCount": 607,
+      "fileCount": 1
+    },
+    {
+      "code": "d/m/yyyy;@",
+      "cellCount": 588,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.0;[Red]\\(#,##0.0\\);\\-",
+      "cellCount": 573,
+      "fileCount": 2
+    },
+    {
+      "code": "_(\"$ \"#,##0.0_);_(\"$ \"(#,##0.0)",
+      "cellCount": 542,
+      "fileCount": 17
+    },
+    {
+      "code": "#0.0000",
+      "cellCount": 534,
+      "fileCount": 3
+    },
+    {
+      "code": "0\\-00000\\-00000\\-0",
+      "cellCount": 528,
+      "fileCount": 3
+    },
+    {
+      "code": "00000\\-00000",
+      "cellCount": 528,
+      "fileCount": 3
+    },
+    {
+      "code": "0.0000",
+      "cellCount": 501,
+      "fileCount": 10
+    },
+    {
+      "code": "#,##0%_);(#,##0%)",
+      "cellCount": 494,
+      "fileCount": 24
+    },
+    {
+      "code": "d-mmm-yy",
+      "cellCount": 492,
+      "fileCount": 35
+    },
+    {
+      "code": "#,##0.00%_);(#,##0.00%)",
+      "cellCount": 490,
+      "fileCount": 23
+    },
+    {
+      "code": "_(\"$ \"#,##0.00_);_(\"$ \"(#,##0.00)",
+      "cellCount": 433,
+      "fileCount": 23
+    },
+    {
+      "code": "_(* #,##0.000_);_(* \\(#,##0.000\\);_(* \"-\"??_);_(@_)",
+      "cellCount": 432,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.0\\ _T_L;[Red]\\-#,##0.0\\ _T_L",
+      "cellCount": 402,
+      "fileCount": 3
+    },
+    {
+      "code": "_-* #,##0_-;\\-* #,##0_-;_-* \"-\"??_-;_-@_-",
+      "cellCount": 396,
+      "fileCount": 3
+    },
+    {
+      "code": "0.00000000E+00",
+      "cellCount": 381,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0_",
+      "cellCount": 360,
+      "fileCount": 3
+    },
+    {
+      "code": "\"$\"#,##0.00_);[Red]\\(\"$\"#,##0.00\\)",
+      "cellCount": 356,
+      "fileCount": 28
+    },
+    {
+      "code": "[$-409]d/m/yyyy\\ hh:mm;@",
+      "cellCount": 354,
+      "fileCount": 3
+    },
+    {
+      "code": "#0.0%",
+      "cellCount": 348,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00;[Red]\\-#,##0.00",
+      "cellCount": 327,
+      "fileCount": 3
+    },
+    {
+      "code": "0.0%;[Red]\\(0.0%\\);\\-",
+      "cellCount": 321,
+      "fileCount": 2
+    },
+    {
+      "code": "[$-010409]dd-mmm-yyyy",
+      "cellCount": 312,
+      "fileCount": 1
+    },
+    {
+      "code": "dd;\"\";\"\"",
+      "cellCount": 300,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00E+00",
+      "cellCount": 239,
+      "fileCount": 24
+    },
+    {
+      "code": "0_);[Red]\\(0\\)",
+      "cellCount": 234,
+      "fileCount": 9
+    },
+    {
+      "code": "0.000000000000000",
+      "cellCount": 222,
+      "fileCount": 6
+    },
+    {
+      "code": "#,##0.00 kr",
+      "cellCount": 199,
+      "fileCount": 1
+    },
+    {
+      "code": "[<0]\"\";0%",
+      "cellCount": 180,
+      "fileCount": 1
+    },
+    {
+      "code": "###,##0;\\-###,##0;0",
+      "cellCount": 176,
+      "fileCount": 1
+    },
+    {
+      "code": "###0;-###0",
+      "cellCount": 156,
+      "fileCount": 4
+    },
+    {
+      "code": "_-* #,##0.00\\ _T_L_-;\\-* #,##0.00\\ _T_L_-;_-* \\-??\\ _T_L_-;_-@_-",
+      "cellCount": 156,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0___________)",
+      "cellCount": 144,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-409]mmmm\\ d\\,\\ yyyy;@",
+      "cellCount": 135,
+      "fileCount": 18
+    },
+    {
+      "code": "[$-1010409]0.000%",
+      "cellCount": 132,
+      "fileCount": 3
+    },
+    {
+      "code": "dd\\-mmm\\-yyyy\\ hh:mm:ss.000",
+      "cellCount": 127,
+      "fileCount": 3
+    },
+    {
+      "code": "0.00_",
+      "cellCount": 122,
+      "fileCount": 2
+    },
+    {
+      "code": "mm/dd/yy",
+      "cellCount": 117,
+      "fileCount": 14
+    },
+    {
+      "code": "#,##0.00;[Red](#,##0.00)",
+      "cellCount": 117,
+      "fileCount": 3
+    },
+    {
+      "code": "A/P",
+      "cellCount": 108,
+      "fileCount": 6
+    },
+    {
+      "code": "AM/PM",
+      "cellCount": 108,
+      "fileCount": 6
+    },
+    {
+      "code": ".00",
+      "cellCount": 108,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-409]d\\-mmm\\-yy;@",
+      "cellCount": 106,
+      "fileCount": 24
+    },
+    {
+      "code": "dd\\/mm\\/yyyy",
+      "cellCount": 102,
+      "fileCount": 6
+    },
+    {
+      "code": "#,##0.00 €;-#,##0.00 €",
+      "cellCount": 98,
+      "fileCount": 2
+    },
+    {
+      "code": "#,###.00",
+      "cellCount": 98,
+      "fileCount": 1
+    },
+    {
+      "code": ".0",
+      "cellCount": 96,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-409]mmm\\-yy;@",
+      "cellCount": 90,
+      "fileCount": 4
+    },
+    {
+      "code": "yyyy-m-d h:mm AM/PM",
+      "cellCount": 90,
+      "fileCount": 2
+    },
+    {
+      "code": "###0;\\-###0",
+      "cellCount": 78,
+      "fileCount": 2
+    },
+    {
+      "code": "#,##0;[Red]\\(#,##0\\);\\-",
+      "cellCount": 71,
+      "fileCount": 2
+    },
+    {
+      "code": "m/d/yy;@",
+      "cellCount": 66,
+      "fileCount": 13
+    },
+    {
+      "code": "[$-1010409]m/d/yyyy",
+      "cellCount": 66,
+      "fileCount": 3
+    },
+    {
+      "code": "yyyy\\-mm\\-dd",
+      "cellCount": 65,
+      "fileCount": 14
+    },
+    {
+      "code": "[$-1010409]General",
+      "cellCount": 63,
+      "fileCount": 3
+    },
+    {
+      "code": "[$$-409]#,##0.00",
+      "cellCount": 63,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]m/d/yy\\ h:mm\\ AM/PM;@",
+      "cellCount": 60,
+      "fileCount": 3
+    },
+    {
+      "code": "m/d/yy\\ h:mm;@",
+      "cellCount": 60,
+      "fileCount": 3
+    },
+    {
+      "code": "[$$-409]#,##0",
+      "cellCount": 57,
+      "fileCount": 3
+    },
+    {
+      "code": "yyyy\\-m\\-d\\ hh:mm:ss",
+      "cellCount": 57,
+      "fileCount": 3
+    },
+    {
+      "code": "0.00\"°\"",
+      "cellCount": 56,
+      "fileCount": 1
+    },
+    {
+      "code": "[=0]?;#,##0.00",
+      "cellCount": 54,
+      "fileCount": 1
+    },
+    {
+      "code": "_-* #,##0.0\\ _F_-;\\-* #,##0.0\\ _F_-;_-* \"-\"??\\ _F_-;_-@_-",
+      "cellCount": 48,
+      "fileCount": 6
+    },
+    {
+      "code": "\"$\"#,##0_);\\(\"$\"#,##0\\)",
+      "cellCount": 46,
+      "fileCount": 2
+    },
+    {
+      "code": "yyyy\\-m\\-d\\ h:mm\\ AM/PM",
+      "cellCount": 45,
+      "fileCount": 1
+    },
+    {
+      "code": "0.000%",
+      "cellCount": 44,
+      "fileCount": 4
+    },
+    {
+      "code": "00000",
+      "cellCount": 44,
+      "fileCount": 4
+    },
+    {
+      "code": "_([$$-409]* #,##0.00_);_([$$-409]* \\(#,##0.00\\);_([$$-409]* \"-\"??_);_(@_)",
+      "cellCount": 44,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-F800]dddd\\,\\ mmmm\\ dd\\,\\ yyyy",
+      "cellCount": 43,
+      "fileCount": 11
+    },
+    {
+      "code": "#,##0.000000000",
+      "cellCount": 43,
+      "fileCount": 7
+    },
+    {
+      "code": "#,##0.0;[Red]#,##0.0",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.000",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.00000",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.000000",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.0000000",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.00000000",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "0;[Red]0",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "0.00;[Red]0.00",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "mmm\\-yy;@",
+      "cellCount": 40,
+      "fileCount": 4
+    },
+    {
+      "code": "dd\"-\"mmm\"-\"yy",
+      "cellCount": 40,
+      "fileCount": 2
+    },
+    {
+      "code": "\" \"@\" \"",
+      "cellCount": 40,
+      "fileCount": 1
+    },
+    {
+      "code": "YYYY\\-MM\\-DD",
+      "cellCount": 39,
+      "fileCount": 4
+    },
+    {
+      "code": "[Red][<-25]General;[Blue][>25]General;[Green]General;[Yellow]General\\",
+      "cellCount": 39,
+      "fileCount": 3
+    },
+    {
+      "code": "[Red][<=-25]General;[Blue][>=25]General;[Green]General;[Yellow]General",
+      "cellCount": 39,
+      "fileCount": 3
+    },
+    {
+      "code": "##0.0E+0",
+      "cellCount": 39,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.00\"  \";\\-#,##0.00\"  \";\\ \\-\\-\"  \";@\"  \"",
+      "cellCount": 39,
+      "fileCount": 1
+    },
+    {
+      "code": "[<=9999999]###\\-####;\\(###\\)\\ ###\\-####",
+      "cellCount": 36,
+      "fileCount": 6
+    },
+    {
+      "code": "[Black]@",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[Blue]General",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[Cyan]@",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[Green]#,###",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[Magenta]0.00",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[Red]#.##",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[White]0.0",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "[Yellow]@",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "d",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "dd",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "ddd",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "dddd",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "hhm",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yy",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yym",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yymm",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yymmm",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yymmmm",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yymmmmm",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "yyyy",
+      "cellCount": 36,
+      "fileCount": 4
+    },
+    {
+      "code": "_(* #,##0.0_);_(* \\(#,##0.0\\);_(* \"-\"??_);_(@_)",
+      "cellCount": 36,
+      "fileCount": 3
+    },
+    {
+      "code": "[HH]",
+      "cellCount": 36,
+      "fileCount": 2
+    },
+    {
+      "code": ";;;",
+      "cellCount": 36,
+      "fileCount": 1
+    },
+    {
+      "code": "\"               \"@",
+      "cellCount": 36,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-F400]h:mm:ss\\ AM/PM",
+      "cellCount": 35,
+      "fileCount": 5
+    },
+    {
+      "code": "#,##0.00;\\ \\-\\ #,##0.00;\\ \\-",
+      "cellCount": 34,
+      "fileCount": 1
+    },
+    {
+      "code": "mm/dd/yy;@",
+      "cellCount": 33,
+      "fileCount": 6
+    },
+    {
+      "code": "[$-409]d\\-mmm\\-yyyy;@",
+      "cellCount": 33,
+      "fileCount": 4
+    },
+    {
+      "code": "0.0000E+00",
+      "cellCount": 33,
+      "fileCount": 3
+    },
+    {
+      "code": "hh:mm:ss\\ AM/PM",
+      "cellCount": 32,
+      "fileCount": 4
+    },
+    {
+      "code": "m\"/\"dd\"/\"yyyy",
+      "cellCount": 32,
+      "fileCount": 2
+    },
+    {
+      "code": "[$-409]dd\\-mmm\\-yy;@",
+      "cellCount": 31,
+      "fileCount": 4
+    },
+    {
+      "code": "0.00_);[Red]\\(0.00\\)",
+      "cellCount": 31,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.000%_);(#,##0.000%)",
+      "cellCount": 30,
+      "fileCount": 8
+    },
+    {
+      "code": "#,##0.0_ ;\\-#,##0.0\\",
+      "cellCount": 30,
+      "fileCount": 6
+    },
+    {
+      "code": "_ * #,##0.00_)[$﷼-429]_ ;_ * \\(#,##0.00\\)[$﷼-429]_ ;_ * \"-\"??_)[$﷼-429]_ ;_ @_",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "_([$ANG]\\ * #,##0.0_);_([$ANG]\\ * \\(#,##0.0\\);_([$ANG]\\ * \"-\"?_);_(@_)",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]d\\-mmm;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]h:mm:ss\\ AM/PM;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]h:mm\\ AM/PM;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]mmmm\\-yy;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]mmmmm;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]mmmmm\\-yy;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$£-809]#,##0.00;[Red][$£-809]#,##0.00",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$¥-411]#,##0.00",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[$¥-804]#,##0.00",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "[h]:mm:ss;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.0_);[Red]\\(#,##0.0\\)",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.0_);\\(#,##0.0\\)",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.00[$₹-449]_);\\(#,##0.00[$₹-449]\\)",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.00\\ [$€-407]",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "0_);\\(0\\)",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "0.00_);\\(0.00\\)",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "000\\-00\\-0000",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "00000\\-0000",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "h:mm:ss;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "m/d;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "mm:ss.0;@",
+      "cellCount": 30,
+      "fileCount": 3
+    },
+    {
+      "code": "_(\"$ \"#,##0.000_);_(\"$ \"(#,##0.000)",
+      "cellCount": 28,
+      "fileCount": 6
+    },
+    {
+      "code": "dd/mm/yy",
+      "cellCount": 26,
+      "fileCount": 5
+    },
+    {
+      "code": "0000",
+      "cellCount": 26,
+      "fileCount": 4
+    },
+    {
+      "code": "_(\"$ \"#,##0.0000_);_(\"$ \"(#,##0.0000)",
+      "cellCount": 25,
+      "fileCount": 6
+    },
+    {
+      "code": "0.0_",
+      "cellCount": 24,
+      "fileCount": 3
+    },
+    {
+      "code": "dd/m/yyyy",
+      "cellCount": 24,
+      "fileCount": 3
+    },
+    {
+      "code": "DD/MM/YY",
+      "cellCount": 22,
+      "fileCount": 5
+    },
+    {
+      "code": "[>999999]#,,\"M\";[>999]#,\"K\";#",
+      "cellCount": 22,
+      "fileCount": 2
+    },
+    {
+      "code": "[>999999]#.000,,\"M\";[>999]#.000,\"K\";#.000",
+      "cellCount": 22,
+      "fileCount": 2
+    },
+    {
+      "code": "\"TRUE\";\"TRUE\";\"FALSE\"",
+      "cellCount": 21,
+      "fileCount": 11
+    },
+    {
+      "code": "00%",
+      "cellCount": 21,
+      "fileCount": 1
+    },
+    {
+      "code": "_-* #,##0.00\\ \"€\"_-;\\-* #,##0.00\\ \"€\"_-;_-* \"-\"??\\ \"€\"_-;_-@_-",
+      "cellCount": 20,
+      "fileCount": 4
+    },
+    {
+      "code": "#,##0.00;(#,##0.00);0.00",
+      "cellCount": 20,
+      "fileCount": 2
+    },
+    {
+      "code": "mmm-yy;@",
+      "cellCount": 20,
+      "fileCount": 2
+    },
+    {
+      "code": "\"¥\"#,##0.00",
+      "cellCount": 20,
+      "fileCount": 1
+    },
+    {
+      "code": "dd\"-\"mmm\"-\"yy;@",
+      "cellCount": 20,
+      "fileCount": 1
+    },
+    {
+      "code": "m\"/\"dd\"/\"yy\" \"hh\":\"mm;@",
+      "cellCount": 20,
+      "fileCount": 1
+    },
+    {
+      "code": "m\"/\"dd\"/\"yy\" \"hh\":\"mm\" \"AM/PM;@",
+      "cellCount": 20,
+      "fileCount": 1
+    },
+    {
+      "code": "mmm\"-\"yy;@",
+      "cellCount": 20,
+      "fileCount": 1
+    },
+    {
+      "code": "000",
+      "cellCount": 19,
+      "fileCount": 1
+    },
+    {
+      "code": "h:mm AM/PM",
+      "cellCount": 18,
+      "fileCount": 10
+    },
+    {
+      "code": "#0.#",
+      "cellCount": 18,
+      "fileCount": 3
+    },
+    {
+      "code": "000000000",
+      "cellCount": 18,
+      "fileCount": 3
+    },
+    {
+      "code": "yy\\.mm\\.dd",
+      "cellCount": 18,
+      "fileCount": 3
+    },
+    {
+      "code": "[BLACK]@",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[BLUE]GENERAL",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[CYAN]@",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[GREEN]#,###",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[H]",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[MAGENTA]0.00",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[RED]#.##",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[S]",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[SS]",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[WHITE]0.0",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "[YELLOW]@",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "D",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "DD",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "dd/mm/yy\\ hh:mm",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "DDD",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "DDDD",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "H",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "HH[M]",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "HH[MM]",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "HHM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "HHMM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "S",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "SS",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YY",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YYM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YYMM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YYMMM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YYMMMM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YYMMMMM",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "YYYY",
+      "cellCount": 18,
+      "fileCount": 2
+    },
+    {
+      "code": "\"            \"@",
+      "cellCount": 18,
+      "fileCount": 1
+    },
+    {
+      "code": "\\(General\\)",
+      "cellCount": 17,
+      "fileCount": 1
+    },
+    {
+      "code": "\\$#,##0",
+      "cellCount": 17,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00_р_.",
+      "cellCount": 17,
+      "fileCount": 1
+    },
+    {
+      "code": "HH:MM:SS\\ AM/PM",
+      "cellCount": 16,
+      "fileCount": 2
+    },
+    {
+      "code": "\\+0.0%;\\-0.0%;\\-",
+      "cellCount": 16,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00\\ \\€;\\-#,##0.00\\ \\€",
+      "cellCount": 16,
+      "fileCount": 1
+    },
+    {
+      "code": "mmm\\ yyyy",
+      "cellCount": 16,
+      "fileCount": 1
+    },
+    {
+      "code": "hh:mm:ss",
+      "cellCount": 15,
+      "fileCount": 4
+    },
+    {
+      "code": "hh\":\"mm\":\"ss\" \"AM/PM",
+      "cellCount": 15,
+      "fileCount": 2
+    },
+    {
+      "code": "\"      \"@",
+      "cellCount": 15,
+      "fileCount": 1
+    },
+    {
+      "code": "\"   \"@",
+      "cellCount": 14,
+      "fileCount": 1
+    },
+    {
+      "code": "[h]:mm:ss",
+      "cellCount": 13,
+      "fileCount": 7
+    },
+    {
+      "code": "h:mm:ss AM/PM",
+      "cellCount": 13,
+      "fileCount": 7
+    },
+    {
+      "code": "0.0E0",
+      "cellCount": 13,
+      "fileCount": 1
+    },
+    {
+      "code": "yyyy/mm/dd",
+      "cellCount": 12,
+      "fileCount": 12
+    },
+    {
+      "code": "mmss.0",
+      "cellCount": 12,
+      "fileCount": 4
+    },
+    {
+      "code": "mmmm\\ yyyy",
+      "cellCount": 12,
+      "fileCount": 3
+    },
+    {
+      "code": "\"$\"#,##0.00\" \";[Red]\"(\"\"$\"#,##0.00\")\"",
+      "cellCount": 12,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00 \"€\"",
+      "cellCount": 12,
+      "fileCount": 1
+    },
+    {
+      "code": "mmmm\\-yy",
+      "cellCount": 12,
+      "fileCount": 1
+    },
+    {
+      "code": "yyyy\\-mm\\-dd\\ h:mm",
+      "cellCount": 12,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.000_);(#,##0.000)",
+      "cellCount": 11,
+      "fileCount": 4
+    },
+    {
+      "code": "\\$#,##0.0;[Red]\\(\\$#,##0.0\\);\\-",
+      "cellCount": 11,
+      "fileCount": 2
+    },
+    {
+      "code": "0.0000E00",
+      "cellCount": 11,
+      "fileCount": 1
+    },
+    {
+      "code": "_(\"€ \"#,##0_);_(\"€ \"(#,##0)",
+      "cellCount": 10,
+      "fileCount": 5
+    },
+    {
+      "code": "h:mm:ss",
+      "cellCount": 10,
+      "fileCount": 4
+    },
+    {
+      "code": "\") \"\"-\"\"(\"0",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "\"£\"#,##0.00;[Red]\"£\"#,##0.00",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "[hh]\":\"mm\":\"ss;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ???/???",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ??/100",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ??/16",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ?/10",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ?/2",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ?/4",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "# ?/8",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.0\" \";\"(\"#,##0.0\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.0\" \";[Red]\"(\"#,##0.0\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00\" \"\"€\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00\"₹\"\" \";\"(\"#,##0.00\"₹\"\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00\" \";\"(\"0.00\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00\" \";[Red]\"(\"0.00\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "0\" \";\"(\"0\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "0\" \";[Red]\"(\"0\")\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "00000\"-\"0000",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "00000\"\"-\"-\"0000",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "dd\"-\"mmm;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "dd\"-\"mmm\"-\"yyyy;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "dddd\", \"mmmm\" \"dd\", \"yyyy",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "hh\":\"mm;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "hh\":\"mm\" \"AM/PM;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "hh\":\"mm\":\"ss;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "hh\":\"mm\":\"ss\" \"AM/PM;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "m\"/\"dd;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "m\"/\"dd\"/\"yy;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "m\"/\"dd\"/\"yyyy;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "mm\":\"ss.0;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "mm\"/\"dd\"/\"yy;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "mmm;\"\";\"\"",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "mmm;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "mmmm\" \"dd\", \"yyyy;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "mmmm\"-\"yy;@",
+      "cellCount": 10,
+      "fileCount": 1
+    },
+    {
+      "code": "0.000000000",
+      "cellCount": 9,
+      "fileCount": 6
+    },
+    {
+      "code": "yyyy\"-\"mm\"-\"dd",
+      "cellCount": 9,
+      "fileCount": 5
+    },
+    {
+      "code": "_(\"$\"* #,##0_);[Red]_(\"$\"* \\(#,##0\\);_(\"$\"* \"-\"??_);_(@_)",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "[Red][<>50]General;[Blue]000",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "[Red][=50]General;[Blue]000",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.00;[Red]\\(#,##0.00\\)",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.00;\\(#,##0.00\\)",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0\\ ;[Red]\\(#,##0\\)",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0\\ ;\\(#,##0\\)",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "0.000000000%",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "dd/mm/yyyy\\ hh:mm:ss",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "mm:ss",
+      "cellCount": 9,
+      "fileCount": 3
+    },
+    {
+      "code": "\"         \"@",
+      "cellCount": 9,
+      "fileCount": 1
+    },
+    {
+      "code": "yyyy\\-mm\\-dd;@",
+      "cellCount": 9,
+      "fileCount": 1
+    },
+    {
+      "code": "dd\"/\"mm\"/\"yy",
+      "cellCount": 8,
+      "fileCount": 1
+    },
+    {
+      "code": "DD/MM/YYYY",
+      "cellCount": 7,
+      "fileCount": 4
+    },
+    {
+      "code": "\"£\"#,##0;[Red]\\-\"£\"#,##0",
+      "cellCount": 6,
+      "fileCount": 6
+    },
+    {
+      "code": "\"£\"#,##0.00",
+      "cellCount": 6,
+      "fileCount": 6
+    },
+    {
+      "code": "d/m/yy;@",
+      "cellCount": 6,
+      "fileCount": 6
+    },
+    {
+      "code": "dd\\-mm\\-yy",
+      "cellCount": 6,
+      "fileCount": 6
+    },
+    {
+      "code": "yy/mm/dd",
+      "cellCount": 6,
+      "fileCount": 6
+    },
+    {
+      "code": "_-\\$* #,##0.0_ ;_-\\$* \\-#,##0.0\\ ;_-\\$* \"-\"?_ ;_-@_",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "\"$\"#,##0;[Red]\\-\"$\"#,##0",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "\"￥\"#,##0.00;\"￥\"\\-#,##0.00",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "[$-409]dd/mm/yyyy\\ hh:mm;@",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "[DBNum1][$-804]General",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.000_",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "00000000",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "d\\-mmm\\-yyyy",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "h\"时\"mm\"分\"ss\"秒\";@",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "m/d/yy\\ h:mm",
+      "cellCount": 6,
+      "fileCount": 3
+    },
+    {
+      "code": "[$$-409]#,##0.00;[RED]\\-[$$-409]#,##0.00",
+      "cellCount": 6,
+      "fileCount": 2
+    },
+    {
+      "code": "#,##0.00_);\\(#,##0.00\\)",
+      "cellCount": 6,
+      "fileCount": 2
+    },
+    {
+      "code": "hh\":\"mm\":\"ss",
+      "cellCount": 6,
+      "fileCount": 2
+    },
+    {
+      "code": "m/d/yyyy\\ h:mm:ss;@",
+      "cellCount": 6,
+      "fileCount": 2
+    },
+    {
+      "code": "mm/dd",
+      "cellCount": 6,
+      "fileCount": 2
+    },
+    {
+      "code": "mmm d, yyyy",
+      "cellCount": 6,
+      "fileCount": 2
+    },
+    {
+      "code": "m\"/\"dd\"/\"yy\" \"hh\":\"mm\" \"AM/PM",
+      "cellCount": 6,
+      "fileCount": 1
+    },
+    {
+      "code": "dd/mm/yy;@",
+      "cellCount": 5,
+      "fileCount": 4
+    },
+    {
+      "code": "MM/DD/YY",
+      "cellCount": 5,
+      "fileCount": 4
+    },
+    {
+      "code": "00",
+      "cellCount": 5,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.0000_);(#,##0.0000)",
+      "cellCount": 4,
+      "fileCount": 3
+    },
+    {
+      "code": "\"上午/下午 \"hh\"時\"mm\"分\"ss\"秒 \"",
+      "cellCount": 4,
+      "fileCount": 2
+    },
+    {
+      "code": "DD/MM/YY;@",
+      "cellCount": 4,
+      "fileCount": 2
+    },
+    {
+      "code": "DD/MM/YYYY;@",
+      "cellCount": 4,
+      "fileCount": 2
+    },
+    {
+      "code": "hh\":\"mm\" \"AM/PM",
+      "cellCount": 4,
+      "fileCount": 2
+    },
+    {
+      "code": "mmm\\ d\\,\\ yyyy",
+      "cellCount": 4,
+      "fileCount": 2
+    },
+    {
+      "code": "#,###,##0",
+      "cellCount": 4,
+      "fileCount": 1
+    },
+    {
+      "code": "###,###,##0.000",
+      "cellCount": 4,
+      "fileCount": 1
+    },
+    {
+      "code": "0.000000",
+      "cellCount": 4,
+      "fileCount": 1
+    },
+    {
+      "code": "d/mm/yyyy;@",
+      "cellCount": 4,
+      "fileCount": 1
+    },
+    {
+      "code": "DD.MM.YYYY",
+      "cellCount": 4,
+      "fileCount": 1
+    },
+    {
+      "code": "mm\"/\"dd\"/\"yy",
+      "cellCount": 4,
+      "fileCount": 1
+    },
+    {
+      "code": "\"Years: \"0",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\#\\r\\e\\c",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\C\\O\\B\\ \\o\\n\\ @",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\C\\R\\O\\N\\T\\A\\B\\ \\o\\n\\ @",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\R\\e\\s\\u\\l\\t\\ \\o\\n\\ @",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\S\\Q\\L\\ \\:\\ @",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\S\\Q\\L\\ \\R\\e\\q\\u\\e\\s\\t\\ \\f\\o\\r\\ @",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "\\u\\n\\t\\i\\l\\ h:mm;@",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "#,##0.00000000;[Red]#,##0.00000000",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "0.00000000",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "00.000%",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "dd\"-\"mmm\"-\"yyyy",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "dd\\/mm\\/yy",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "mmm\" \"d\", \"yyyy",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "mmmm\\ d\\,\\ yyyy",
+      "cellCount": 3,
+      "fileCount": 3
+    },
+    {
+      "code": "MM/DD/YY\\ HH:MM\\ AM/PM",
+      "cellCount": 3,
+      "fileCount": 2
+    },
+    {
+      "code": "[hh]\":\"mm\":\"ss",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "\\$#,##0.00_);[RED]\"($\"#,##0.00\\)",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00;\"(\"#,##0.00\")\"",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00;[Red]\"(\"#,##0.00\")\"",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0\" \";\"(\"#,##0\")\"",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0\" \";[Red]\"(\"#,##0\")\"",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00E00",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "000%",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "dd\"-\"mmm",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "HH:MM:SS",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "hh\":\"mm",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "mm\":\"ss",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "mmm\"-\"yy",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "yyyy\\-mm\\-dd\\Thh:mm",
+      "cellCount": 3,
+      "fileCount": 1
+    },
+    {
+      "code": "\" Excellent\"",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "\" Fair\"",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "\" Good\"",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "\" Poor\"",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "\" Very Good\"",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "[$-1010409]dddd, mmmm dd, yyyy",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "#,##0;\\-#,##0;0",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "DD/MM/YY\\ HH:MM",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "dd/mm/yyyy",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "hh\":\"mm AM/PM",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "m\"/\"dd\"/\"yyyy\" \"hh\":\"mm",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "m/d/yyyy",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "M/D/YYYY",
+      "cellCount": 2,
+      "fileCount": 2
+    },
+    {
+      "code": "_(\"£ \"#,##0_);_(\"£ \"(#,##0)",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "\"    \"@",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "d/mm/yy;@",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "dd/mm/yyyy;@",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "HH:MM",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "m\"/\"dd\"/\"yy\" \"hh\":\"mm",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "yyyy-mm-dd",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "yyyy\\-mm\\-dd\\Thhmmss.000",
+      "cellCount": 2,
+      "fileCount": 1
+    },
+    {
+      "code": "_-\"€\"\\ * #,##0.00_-;_-\"€\"\\ * #,##0.00\\-;_-\"€\"\\ * \"-\"??_-;_-@_-",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "_-* #,##0.00\" €\"_-;\\-* #,##0.00\" €\"_-;_-* \\-??\" €\"_-;_-@_-",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "_-* #,##0.00\\ [$€-407]_-;\\-* #,##0.00\\ [$€-407]_-;_-* \\-??\\ [$€-407]_-;_-@_-",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "\"€\"\\ #,##0.00_-",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-1010409]dddd\\,\\ mmmm\\ dd\\,\\ yyyy",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "[$-3000401]0",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "[$$-0409]#,##0.00_);[$$-0409](#,##0.00)",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "[$$-409]#,##0.00_);[Red]\\([$$-409]#,##0.00\\)",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "[$$-C09]#,##0.00",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "[$AUD]\\ #,##0.00",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "**\\ #,###,#00,000.00,**",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "\\ dd/mm/yy\\ hh:mm:ss;dd/mm/yy\\ hh:mm:ss;_-* \"\"??_-;_-@_-",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "\\$#,##0_);[RED]\"($\"#,##0\\)",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "\\$#,##0.00",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "\\$0.00",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0,,",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "#,##0.00\\ [$€-40C]",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "0.0\\x",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "0.0000000000",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "0.00000000000000",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "0.000000000000000000000",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "0.0000000000000000E+00",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "00.00.00.000",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "d/m",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "dd\".\"mm\".\"yy",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "ddd\", \"dd\". \"mmm\" \"yy",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "DDDD\", \"MMMM\\ DD\", \"YYYY",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "h:mm:ss\\ AM/PM",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "H:MM:SS\\ AM/PM",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "hh\":\"mm\\ AM/PM",
+      "cellCount": 1,
+      "fileCount": 1
+    },
+    {
+      "code": "M/D/YYYY\\ H:MM",
+      "cellCount": 1,
+      "fileCount": 1
+    }
+  ]
+}
