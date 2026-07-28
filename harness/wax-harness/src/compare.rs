@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{Cell, CellType, DumpDocument, DumpError, Tool};
+use crate::roundtrip::RoundTripFileMetrics;
 use crate::serve::ServeFileMetrics;
 
 #[derive(Debug, Clone)]
@@ -118,6 +119,8 @@ pub struct FileMetrics {
     pub sheetjs: ToolSummary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serve: Option<ServeFileMetrics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub round_trip: Option<RoundTripFileMetrics>,
     pub cell_value_match: CountMetric,
     pub wax_display_coverage: CoverageMetric,
     pub sheetjs_display_coverage: CoverageMetric,
@@ -158,6 +161,7 @@ pub fn compare(
         wax: wax_summary,
         sheetjs: sheetjs_summary,
         serve: None,
+        round_trip: None,
         cell_value_match: CountMetric::default(),
         wax_display_coverage: coverage(wax.document.as_ref()),
         sheetjs_display_coverage: coverage(sheetjs.document.as_ref()),
@@ -313,7 +317,7 @@ fn format_display_metrics(
     formats.into_values().collect()
 }
 
-fn cells_have_equal_values(wax: Option<&Cell>, sheetjs: Option<&Cell>) -> bool {
+pub(crate) fn cells_have_equal_values(wax: Option<&Cell>, sheetjs: Option<&Cell>) -> bool {
     match (wax, sheetjs) {
         (Some(wax), Some(sheetjs)) if wax.t == sheetjs.t => values_equal(wax.t, &wax.v, &sheetjs.v),
         _ => false,

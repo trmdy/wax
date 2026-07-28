@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::aggregate::{RatioMetric, Scoreboard};
+use crate::aggregate::{RatioMetric, RoundTripMetrics, Scoreboard};
 use crate::formats::FormatCoverageReport;
 
 pub fn render_markdown(scoreboard: &Scoreboard) -> String {
@@ -110,11 +110,70 @@ pub fn render_markdown_with_formats(
         serve_latency(scoreboard)
     )
     .unwrap();
+    if let Some(round_trip) = metrics.round_trip.as_ref() {
+        render_round_trip(&mut output, round_trip);
+    }
     render_extensions(&mut output, scoreboard);
     if let Some(format_coverage) = format_coverage {
         render_formats(&mut output, format_coverage);
     }
     output
+}
+
+fn render_round_trip(output: &mut String, metrics: &RoundTripMetrics) {
+    writeln!(output, "\n## Writer round-trip\n").unwrap();
+    writeln!(output, "| Metric | Result |").unwrap();
+    writeln!(output, "| --- | ---: |").unwrap();
+    writeln!(
+        output,
+        "| round-trip files clean % | {} |",
+        round_trip_ratio(metrics, &metrics.files_clean)
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "| round-trip value fidelity % | {} |",
+        round_trip_ratio(metrics, &metrics.value_match)
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "| round-trip display fidelity % | {} |",
+        round_trip_ratio(metrics, &metrics.display_match)
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "| oracle read-back open % | {} |",
+        round_trip_ratio(metrics, &metrics.oracle_open_rate)
+    )
+    .unwrap();
+    writeln!(output, "| soffice-open rate | {} |", soffice_ratio(metrics)).unwrap();
+    writeln!(
+        output,
+        "| truncated models skipped | {} |",
+        metrics.skipped_truncated
+    )
+    .unwrap();
+}
+
+fn round_trip_ratio(metrics: &RoundTripMetrics, metric: &RatioMetric) -> String {
+    if metrics.status.status == "unavailable" {
+        "n/a (xlsx export unavailable)".to_owned()
+    } else {
+        ratio(metric)
+    }
+}
+
+fn soffice_ratio(metrics: &RoundTripMetrics) -> String {
+    if metrics.status.status == "unavailable" {
+        return "n/a (xlsx export unavailable)".to_owned();
+    }
+    match metrics.status.soffice_status.as_str() {
+        "disabled" => "n/a (soffice disabled)".to_owned(),
+        "unavailable" => "n/a (soffice unavailable)".to_owned(),
+        _ => ratio(&metrics.soffice_open_rate),
+    }
 }
 
 fn render_extensions(output: &mut String, scoreboard: &Scoreboard) {

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use wax_harness::{run, RunnerConfig};
+use wax_harness::{run, RunnerConfig, RunnerPasses};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -30,6 +30,10 @@ struct Arguments {
     #[arg(long)]
     no_serve: bool,
 
+    /// Run the deterministic LibreOffice validation subset.
+    #[arg(long)]
+    soffice: bool,
+
     #[arg(long, default_value = ".", hide = true)]
     repo_root: PathBuf,
 }
@@ -43,7 +47,10 @@ fn main() -> Result<()> {
         arguments.jobs,
         arguments.max_cells,
         arguments.timeout_ms,
-        !arguments.no_serve,
+        RunnerPasses {
+            serve: !arguments.no_serve,
+            soffice: arguments.soffice,
+        },
     );
     let report = run(config)?;
     eprintln!(

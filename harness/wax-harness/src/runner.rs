@@ -14,11 +14,15 @@ use chrono::{SecondsFormat, Utc};
 use serde::Deserialize;
 use wait_timeout::ChildExt;
 
-use crate::aggregate::{aggregate_with_serve, Scoreboard};
+use crate::aggregate::{aggregate_with_serve_and_round_trip, Scoreboard};
 use crate::compare::{compare, FileMetrics, ToolObservation};
 use crate::formats::{aggregate_format_coverage, load_corpus_format_index};
 use crate::model::{DumpDocument, ExpectedDump, Tool};
 use crate::render::render_markdown_with_formats;
+use crate::roundtrip::{
+    detect_soffice, run_round_trip, select_soffice_subset, RoundTripFileConfig,
+    SofficeAvailability, SOFFICE_MAX_SOURCE_BYTES, SOFFICE_SUBSET_FILES, SOFFICE_SUBSET_SEED,
+};
 use crate::serve::{
     detect_serve, run_serve_file, ServeAvailability, ServeFileConfig, ServeFileMetrics,
 };
@@ -38,9 +42,17 @@ pub struct RunnerConfig {
     pub max_cells: u64,
     pub timeout_ms: u64,
     pub serve_enabled: bool,
+    pub soffice_enabled: bool,
     pub wax_bin: PathBuf,
     pub node_bin: PathBuf,
     pub oracle_script: PathBuf,
+    pub soffice_bin: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RunnerPasses {
+    pub serve: bool,
+    pub soffice: bool,
 }
 
 #[derive(Debug)]
@@ -97,6 +109,20 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
         ServeAvailability::Disabled
     };
     let serve_available = serve_availability.is_available();
+    let soffice_availability =
+        detect_soffice(config.soffice_enabled, config.soffice_bin.as_deref());
+    let soffice_ids = if config.soffice_enabled {
+        select_soffice_subset(
+            entries
+                .iter()
+                .map(|entry| (entry.id.as_str(), entry.ext.as_str(), entry.bytes)),
+            SOFFICE_SUBSET_FILES,
+            SOFFICE_MAX_SOURCE_BYTES,
+            SOFFICE_SUBSET_SEED,
+        )
+    } else {
+        HashSet::new()
+    };
     let export_smoke_ids: HashSet<_> = entries
         .iter()
         .filter(|entry| entry.ext.eq_ignore_ascii_case("xlsx"))
@@ -129,14 +155,24 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
             let next = Arc::clone(&next);
             let sender = sender.clone();
             let export_smoke_ids = &export_smoke_ids;
+            let soffice_ids = &soffice_ids;
+            let soffice_availability = &soffice_availability;
             scope.spawn(move || loop {
                 let index = next.fetch_add(1, Ordering::Relaxed);
                 let Some(entry) = entries.get(index) else {
                     break;
                 };
                 let export_smoke = export_smoke_ids.contains(&entry.id);
+                let run_soffice = soffice_ids.contains(&entry.id);
                 let result = std::panic::catch_unwind(|| {
-                    process_entry(entry, &config, serve_available, export_smoke)
+                    process_entry(
+                        entry,
+                        &config,
+                        serve_available,
+                        export_smoke,
+                        run_soffice,
+                        soffice_availability,
+                    )
                 })
                 .unwrap_or_else(|_| internal_failure(entry));
                 if sender.send(result).is_err() {
@@ -163,8 +199,13 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
     results.sort_by(|left, right| left.id.cmp(&right.id));
 
     let generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    let scoreboard =
-        aggregate_with_serve(&results, skipped, generated_at.clone(), &serve_availability);
+    let scoreboard = aggregate_with_serve_and_round_trip(
+        &results,
+        skipped,
+        generated_at.clone(),
+        &serve_availability,
+        &soffice_availability,
+    );
     let corpus_formats =
         load_corpus_format_index(&config.repo_root.join("harness/formats/corpus-formats.json"))?;
     let format_coverage =
@@ -196,7 +237,7 @@ impl RunnerConfig {
         jobs: Option<usize>,
         max_cells: Option<u64>,
         timeout_ms: Option<u64>,
-        serve_enabled: bool,
+        passes: RunnerPasses,
     ) -> Self {
         let repo_root = if repo_root.is_absolute() {
             repo_root
@@ -221,16 +262,19 @@ impl RunnerConfig {
         let oracle_script = std::env::var_os("WAX_ORACLE_SCRIPT")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("harness/oracle/run.js"));
+        let soffice_bin = std::env::var_os("WAX_SOFFICE_BIN").map(PathBuf::from);
 
         Self {
             manifest: relative_to_root(manifest),
             jobs: jobs.unwrap_or_else(default_jobs),
             max_cells: max_cells.unwrap_or(DEFAULT_MAX_CELLS),
             timeout_ms: timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
-            serve_enabled,
+            serve_enabled: passes.serve,
+            soffice_enabled: passes.soffice,
             wax_bin: relative_to_root(wax_bin),
             node_bin,
             oracle_script: relative_to_root(oracle_script),
+            soffice_bin: soffice_bin.map(relative_to_root),
             repo_root,
             limit,
         }
@@ -322,6 +366,8 @@ fn process_entry(
     config: &RunnerConfig,
     serve_available: bool,
     export_smoke: bool,
+    run_soffice: bool,
+    soffice_availability: &SofficeAvailability,
 ) -> FileMetrics {
     let wax = invoke(
         Tool::Wax,
@@ -362,6 +408,28 @@ fn process_entry(
         &sheetjs,
     );
     apply_manifest_metadata(&mut result, entry);
+    if let Some(source) = wax.document.as_ref().filter(|document| document.ok) {
+        let source_path = Path::new(&entry.path);
+        let source_path = if source_path.is_absolute() {
+            source_path.to_path_buf()
+        } else {
+            config.repo_root.join(source_path)
+        };
+        result.round_trip = Some(run_round_trip(
+            source,
+            RoundTripFileConfig {
+                wax_bin: &config.wax_bin,
+                node_bin: &config.node_bin,
+                oracle_script: &config.oracle_script,
+                repo_root: &config.repo_root,
+                source_path: &source_path,
+                max_cells: config.max_cells,
+                timeout: Duration::from_millis(config.timeout_ms),
+                run_soffice,
+                soffice: soffice_availability,
+            },
+        ));
+    }
     if serve_available {
         result.serve = Some(run_serve_entry(entry, config, export_smoke));
     }

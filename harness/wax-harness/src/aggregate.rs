@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::compare::{CountMetric, CoverageMetric, FileMetrics};
+use crate::roundtrip::SofficeAvailability;
 use crate::serve::ServeAvailability;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -38,6 +39,8 @@ pub struct AggregateMetrics {
     pub serve_status: ServeStatusMetric,
     #[serde(default)]
     pub per_extension: BTreeMap<String, ExtensionMetrics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub round_trip: Option<RoundTripMetrics>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -113,6 +116,38 @@ pub struct ServeStatusMetric {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoundTripMetrics {
+    pub files_clean: RatioMetric,
+    pub value_match: RatioMetric,
+    pub display_match: RatioMetric,
+    pub oracle_open_rate: RatioMetric,
+    pub soffice_open_rate: RatioMetric,
+    pub skipped_truncated: u64,
+    pub status: RoundTripStatusMetric,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoundTripStatusMetric {
+    pub status: String,
+    pub reason: Option<String>,
+    pub soffice_status: String,
+    pub soffice_reason: Option<String>,
+}
+
+impl Default for RoundTripStatusMetric {
+    fn default() -> Self {
+        Self {
+            status: "available".to_owned(),
+            reason: None,
+            soffice_status: "disabled".to_owned(),
+            soffice_reason: Some("soffice disabled".to_owned()),
+        }
+    }
+}
+
 impl Default for ServeStatusMetric {
     fn default() -> Self {
         Self {
@@ -142,6 +177,22 @@ pub fn aggregate_with_serve(
     files_skipped: u64,
     generated_at: impl Into<String>,
     serve_availability: &ServeAvailability,
+) -> Scoreboard {
+    aggregate_with_serve_and_round_trip(
+        results,
+        files_skipped,
+        generated_at,
+        serve_availability,
+        &SofficeAvailability::Disabled,
+    )
+}
+
+pub fn aggregate_with_serve_and_round_trip(
+    results: &[FileMetrics],
+    files_skipped: u64,
+    generated_at: impl Into<String>,
+    serve_availability: &ServeAvailability,
+    soffice_availability: &SofficeAvailability,
 ) -> Scoreboard {
     let attempted = results.len() as u64;
     let wax_opened = results.iter().filter(|result| result.wax.ok).count() as u64;
@@ -242,8 +293,102 @@ pub fn aggregate_with_serve(
                 reason: serve_availability.reason().map(str::to_owned),
             },
             per_extension: per_extension(results),
+            round_trip: Some(aggregate_round_trip(results, soffice_availability)),
         },
     }
+}
+
+fn aggregate_round_trip(
+    results: &[FileMetrics],
+    soffice_availability: &SofficeAvailability,
+) -> RoundTripMetrics {
+    let round_trips: Vec<_> = results
+        .iter()
+        .filter_map(|result| result.round_trip.as_ref())
+        .collect();
+    let attempted: Vec<_> = round_trips
+        .iter()
+        .copied()
+        .filter(|round_trip| round_trip.was_attempted())
+        .collect();
+    let skipped_truncated = round_trips
+        .iter()
+        .filter(|round_trip| round_trip.status == "skippedTruncated")
+        .count() as u64;
+    let unavailable = attempted
+        .iter()
+        .filter(|round_trip| round_trip.is_unavailable())
+        .count();
+    let has_available_evidence = attempted
+        .iter()
+        .any(|round_trip| export_stage_succeeded(round_trip));
+    let export_unavailable = unavailable != 0 && !has_available_evidence;
+
+    let status = RoundTripStatusMetric {
+        status: if export_unavailable {
+            "unavailable".to_owned()
+        } else {
+            "available".to_owned()
+        },
+        reason: export_unavailable.then(|| "xlsx export unavailable".to_owned()),
+        soffice_status: soffice_availability.status().to_owned(),
+        soffice_reason: soffice_availability.reason().map(str::to_owned),
+    };
+    if export_unavailable {
+        return RoundTripMetrics {
+            files_clean: RatioMetric {
+                matched: 0,
+                total: attempted.len() as u64,
+                percent: None,
+            },
+            skipped_truncated,
+            status,
+            ..RoundTripMetrics::default()
+        };
+    }
+
+    let value_match = sum_counts(attempted.iter().map(|round_trip| round_trip.value_match));
+    let display_match = sum_counts(attempted.iter().map(|round_trip| round_trip.display_match));
+    let oracle_total = attempted
+        .iter()
+        .filter(|round_trip| round_trip.oracle_open.is_some())
+        .count() as u64;
+    let oracle_opened = attempted
+        .iter()
+        .filter(|round_trip| round_trip.oracle_open == Some(true))
+        .count() as u64;
+    let soffice_total = attempted
+        .iter()
+        .filter(|round_trip| round_trip.soffice_open.is_some())
+        .count() as u64;
+    let soffice_opened = attempted
+        .iter()
+        .filter(|round_trip| round_trip.soffice_open == Some(true))
+        .count() as u64;
+
+    RoundTripMetrics {
+        files_clean: RatioMetric::new(
+            attempted
+                .iter()
+                .filter(|round_trip| round_trip.is_clean())
+                .count() as u64,
+            attempted.len() as u64,
+        ),
+        value_match: RatioMetric::from_count(value_match),
+        display_match: RatioMetric::from_count(display_match),
+        oracle_open_rate: RatioMetric::new(oracle_opened, oracle_total),
+        soffice_open_rate: RatioMetric::new(soffice_opened, soffice_total),
+        skipped_truncated,
+        status,
+    }
+}
+
+fn export_stage_succeeded(round_trip: &crate::roundtrip::RoundTripFileMetrics) -> bool {
+    matches!(round_trip.status.as_str(), "clean" | "defect")
+        || round_trip
+            .error
+            .as_ref()
+            .is_some_and(|error| matches!(error.stage.as_str(), "waxReadBack" | "oracleReadBack"))
 }
 
 impl RatioMetric {
@@ -361,8 +506,12 @@ fn nearest_rank_float(values: &[f64], percentile: usize) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{aggregate, aggregate_with_serve, nearest_rank, nearest_rank_float};
+    use super::{
+        aggregate, aggregate_with_serve, aggregate_with_serve_and_round_trip, nearest_rank,
+        nearest_rank_float,
+    };
     use crate::compare::{CountMetric, CoverageMetric, FileMetrics, ToolSummary};
+    use crate::roundtrip::{RoundTripFailure, RoundTripFileMetrics, SofficeAvailability};
     use crate::serve::{ServeAvailability, ServeFileMetrics, ServeRequestMetric};
 
     fn file(
@@ -388,6 +537,7 @@ mod tests {
             wax: summary(wax_ok),
             sheetjs: summary(sheetjs_ok),
             serve: None,
+            round_trip: None,
             cell_value_match,
             wax_display_coverage: CoverageMetric::default(),
             sheetjs_display_coverage: CoverageMetric::default(),
@@ -547,6 +697,162 @@ mod tests {
         );
         assert_eq!(scoreboard.metrics.serve_peak_rss_bytes.p50, Some(100));
         assert_eq!(scoreboard.metrics.serve_peak_rss_bytes.max, Some(200));
+    }
+
+    #[test]
+    fn round_trip_bookkeeping_counts_export_failure_and_truncated_skip_honestly() {
+        let mut results = vec![
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "xls",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "ods",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+        ];
+        results[0].round_trip = Some(RoundTripFileMetrics {
+            status: "clean".to_owned(),
+            value_match: CountMetric {
+                matched: 9,
+                total: 10,
+            },
+            display_match: CountMetric {
+                matched: 8,
+                total: 10,
+            },
+            oracle_open: Some(true),
+            ..RoundTripFileMetrics::default()
+        });
+        results[1].round_trip = Some(RoundTripFileMetrics {
+            status: "failed".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "bad_request".to_owned(),
+                msg: "fixture failure".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+        results[2].round_trip = Some(RoundTripFileMetrics::skipped_truncated());
+
+        let scoreboard = aggregate_with_serve_and_round_trip(
+            &results,
+            0,
+            "2026-07-28T00:00:00Z",
+            &ServeAvailability::Disabled,
+            &SofficeAvailability::Unavailable {
+                reason: "soffice unavailable".to_owned(),
+            },
+        );
+        let round_trip = scoreboard.metrics.round_trip.unwrap();
+
+        assert_eq!(round_trip.files_clean.matched, 1);
+        assert_eq!(round_trip.files_clean.total, 2);
+        assert_eq!(round_trip.value_match.matched, 9);
+        assert_eq!(round_trip.value_match.total, 10);
+        assert_eq!(round_trip.display_match.matched, 8);
+        assert_eq!(round_trip.display_match.total, 10);
+        assert_eq!(round_trip.oracle_open_rate.matched, 1);
+        assert_eq!(round_trip.oracle_open_rate.total, 1);
+        assert_eq!(round_trip.skipped_truncated, 1);
+        assert_eq!(round_trip.status.soffice_status, "unavailable");
+    }
+
+    #[test]
+    fn all_unavailable_exports_produce_null_rates_instead_of_fake_zeroes() {
+        let mut results = vec![file(
+            "xlsx",
+            true,
+            true,
+            CountMetric::default(),
+            CountMetric::default(),
+        )];
+        results[0].round_trip = Some(RoundTripFileMetrics {
+            status: "xlsxExportUnavailable".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "internal".to_owned(),
+                msg: "writer stub".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+
+        let scoreboard = aggregate(&results, 0, "2026-07-28T00:00:00Z");
+        let round_trip = scoreboard.metrics.round_trip.unwrap();
+
+        assert_eq!(round_trip.status.status, "unavailable");
+        assert_eq!(
+            round_trip.status.reason.as_deref(),
+            Some("xlsx export unavailable")
+        );
+        assert_eq!(round_trip.files_clean.total, 1);
+        assert_eq!(round_trip.files_clean.percent, None);
+        assert_eq!(round_trip.value_match.percent, None);
+        assert_eq!(round_trip.oracle_open_rate.percent, None);
+    }
+
+    #[test]
+    fn unavailable_exports_with_tempdir_failure_remain_unavailable() {
+        let mut results = vec![
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "xls",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+        ];
+        results[0].round_trip = Some(RoundTripFileMetrics {
+            status: "xlsxExportUnavailable".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "internal".to_owned(),
+                msg: "writer stub".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+        results[1].round_trip = Some(RoundTripFileMetrics {
+            status: "failed".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "temporary".to_owned(),
+                code: "io".to_owned(),
+                msg: "failed to create round-trip directory".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+
+        let scoreboard = aggregate(&results, 0, "2026-07-28T00:00:00Z");
+        let round_trip = scoreboard.metrics.round_trip.unwrap();
+
+        assert_eq!(round_trip.status.status, "unavailable");
+        assert_eq!(
+            round_trip.status.reason.as_deref(),
+            Some("xlsx export unavailable")
+        );
+        assert_eq!(round_trip.files_clean.total, 2);
+        assert_eq!(round_trip.files_clean.percent, None);
+        assert_eq!(round_trip.value_match.percent, None);
+        assert_eq!(round_trip.oracle_open_rate.percent, None);
     }
 
     fn request(id: u64, op: &str, wall_ms: f64) -> ServeRequestMetric {
