@@ -5,5 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+quick-xml.workspace = true
+rust_xlsxwriter.workspace = true
+tempfile.workspace = true
 wax-core = { path = "../wax-core" }
 wax-store = { path = "../wax-store" }
+zip.workspace = true
+
+[dev-dependencies]
+wax-read = { path = "../wax-read" }
