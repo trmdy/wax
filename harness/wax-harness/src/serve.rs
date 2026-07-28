@@ -488,6 +488,7 @@ pub fn detect_serve(wax_bin: &Path, repo_root: &Path, timeout: Duration) -> Serv
     let diagnostic_lower = diagnostic.to_ascii_lowercase();
     if diagnostic_lower.contains("unrecognized subcommand")
         || diagnostic_lower.contains("unknown subcommand")
+        || diagnostic_lower.contains("unknown command")
         || diagnostic_lower.contains("unexpected argument 'serve'")
         || diagnostic_lower.contains("invalid command")
     {

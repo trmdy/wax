@@ -210,13 +210,13 @@ Keep every W1/W2 metric; JSON stays additive.
   mechanism**: it must run end-to-end over the corpus. Export smoke:
   for a deterministic ~50-file xlsx subset, `export` to CSV in a temp dir
   and assert `ok:true` + non-empty file.
-- **Scoreboard JSON shape** (amended 2026-07-28 after W3D's buz, binding):
-  new serve measurements land in an additive `serveMetrics` object —
-  `{ windowLatencyMs: {p50,p95}, peakRssBytes: {p50,max},
-  openViaServePct, … }`. The legacy `metrics.windowLatencyMs` keeps its
-  nullable-scalar shape; its `wax` field is filled with the measured p50
-  scalar once real numbers exist (`sheetjs` stays `null` — no protocol to
-  measure). The SCOREBOARD.md row renders p50/p95 from `serveMetrics`.
+- **Scoreboard JSON shape** (amended 2026-07-28; re-amended at W3D merge
+  to match the shipped, tested implementation): serve measurements are
+  flat additive camelCase fields under `metrics` — `openViaServe`,
+  `windowLatencyPercentilesMs {p50,p95}`, `servePeakRssBytes {p50,max}`,
+  `serveStatus {status,reason}`. The legacy `metrics.windowLatencyMs`
+  stays `{wax:null,sheetjs:null}` permanently; the SCOREBOARD.md
+  window-latency row renders p50/p95 from `windowLatencyPercentilesMs`.
 - **Scoreboard rows** (replace `n/a`, never fabricate):
   - `window latency` — p50/p95 over all window requests corpus-wide.
   - `serve peak RSS (p50 / max)` — from `stats`.
