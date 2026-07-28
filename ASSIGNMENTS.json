@@ -318,7 +318,7 @@
       "branch": "agent/wax-w5c-release",
       "worktree": ".worktrees/w5c",
       "bee": "wax-w5c",
-      "state": "working",
+      "state": "merged",
       "owns": [
         ".github/**",
         "scripts/**",
@@ -335,7 +335,7 @@
       "branch": "agent/wax-w5d-strings",
       "worktree": ".worktrees/w5d",
       "bee": "wax-w5d",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "crates/wax-write/**",
         "harness/wax-harness/**",
