@@ -171,7 +171,7 @@
       "title": "Safety rails (bomb/XML/timeout) + cargo-fuzz targets wired into check.sh/CI",
       "branch": "agent/wax-w3c-safety",
       "worktree": ".worktrees/w3c",
-      "bee": "wax-w3c2",
+      "bee": "coordinator (CL.d73) \u2014 takeover after two wedged bees",
       "state": "working",
       "owns": [
         "crates/wax-read/src/safety.rs",
@@ -181,7 +181,7 @@
         ".github/**"
       ],
       "brief": "docs/briefs/w3c.md",
-      "beeId": null
+      "beeId": "CL.d73"
     },
     {
       "id": "w3d",
