@@ -1,0 +1,21 @@
+[package]
+name = "wax-harness"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Differential corpus harness for wax"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wait-timeout = "0.2"
+
+[dev-dependencies]
+tempfile = "3.10"
+
+# W1D is developed in parallel with the root workspace scaffold. The
+# coordinator removes this marker when wiring the crate into that workspace.
+[workspace]
