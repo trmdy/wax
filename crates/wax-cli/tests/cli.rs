@@ -215,7 +215,6 @@ fn export_rejects_invalid_format_and_sheet_as_usage_errors() {
 }
 
 #[test]
-#[ignore = "requires the W4A wax-write xlsx implementation"]
 fn export_success_reports_json_and_produces_a_readable_workbook() {
     let temp = tempfile::tempdir().expect("temporary directory");
     let output_path = temp.path().join("copy.xlsx");

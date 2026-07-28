@@ -13,7 +13,6 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use wax_core::CellValue;
 use wax_proto::{
     parse_request, CancelResponse, CloseResponse, ErrorCode, ErrorResponse, ExportResponse,
     MetaResponse, OpenResponse, Request, Response, SheetSummary, StatsResponse, VersionResponse,
@@ -26,12 +25,6 @@ use wax_write::ExportOutcome;
 use crate::peak_rss_bytes;
 
 const EVENT_POLL: Duration = Duration::from_millis(5);
-const CSV_ROW_BLOCK: u32 = 64;
-const CSV_DROPPED: [&str; 3] = [
-    "formulas (cached values only)",
-    "number formatting beyond display strings",
-    "merges",
-];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -699,90 +692,7 @@ fn export_csv(
     out: &Path,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, Failure> {
-    checkpoint(cancel)?;
-    let meta = store.sheet_meta(sheet).ok_or_else(|| {
-        Failure::new(
-            ErrorCode::BadRequest,
-            format!("sheet index {sheet} is out of range"),
-        )
-    })?;
-    let parent = out
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| {
-        Failure::new(
-            ErrorCode::Internal,
-            format!("could not create {}: {error}", out.display()),
-        )
-    })?;
-    let mut output = BufWriter::new(temporary.as_file_mut());
-
-    if meta.cols == 0 {
-        for _ in 0..meta.rows {
-            checkpoint(cancel)?;
-            output
-                .write_all(b"\r\n")
-                .map_err(|error| csv_write_error(out, error))?;
-        }
-    } else {
-        let mut r0 = 0_u32;
-        while r0 < meta.rows {
-            checkpoint(cancel)?;
-            let nr = CSV_ROW_BLOCK.min(meta.rows - r0);
-            let window = store.window(sheet, r0, 0, nr, meta.cols).ok_or_else(|| {
-                Failure::new(
-                    ErrorCode::BadRequest,
-                    format!("sheet index {sheet} is out of range"),
-                )
-            })?;
-            for row in window.rows {
-                for (index, cell) in row.iter().enumerate() {
-                    if index > 0 {
-                        output
-                            .write_all(b",")
-                            .map_err(|error| csv_write_error(out, error))?;
-                    }
-                    if let Some(cell) = cell {
-                        write_csv_field(&mut output, cell)
-                            .map_err(|error| csv_write_error(out, error))?;
-                    }
-                }
-                output
-                    .write_all(b"\r\n")
-                    .map_err(|error| csv_write_error(out, error))?;
-            }
-            r0 = r0.saturating_add(nr);
-        }
-    }
-
-    output
-        .flush()
-        .map_err(|error| csv_write_error(out, error))?;
-    let bytes = output
-        .get_ref()
-        .metadata()
-        .map(|metadata| metadata.len())
-        .map_err(|error| csv_write_error(out, error))?;
-    drop(output);
-    checkpoint(cancel)?;
-    temporary.persist(out).map_err(|error| {
-        Failure::new(
-            ErrorCode::Internal,
-            format!("could not write {}: {}", out.display(), error.error),
-        )
-    })?;
-    Ok(ExportOutcome {
-        bytes,
-        dropped: CSV_DROPPED.iter().map(|item| (*item).to_owned()).collect(),
-    })
-}
-
-fn csv_write_error(out: &Path, error: io::Error) -> Failure {
-    Failure::new(
-        ErrorCode::Internal,
-        format!("could not write {}: {error}", out.display()),
-    )
+    wax_write::write_csv(store, sheet, out, cancel).map_err(writer_failure)
 }
 
 fn writer_failure(error: wax_write::WriteError) -> Failure {
@@ -790,35 +700,6 @@ fn writer_failure(error: wax_write::WriteError) -> Failure {
         ErrorCode::from_code(&error.code).unwrap_or(ErrorCode::Internal),
         error.msg,
     )
-}
-
-fn write_csv_field(output: &mut impl Write, cell: &WindowCell) -> io::Result<()> {
-    let raw;
-    let value = if let Some(display) = &cell.d {
-        display.as_str()
-    } else {
-        raw = match &cell.v {
-            Some(CellValue::Number(value)) => value.to_string(),
-            Some(CellValue::Text(value)) => value.clone(),
-            Some(CellValue::Bool(true)) => "TRUE".to_owned(),
-            Some(CellValue::Bool(false)) => "FALSE".to_owned(),
-            None => String::new(),
-        };
-        &raw
-    };
-    if value.contains([',', '"', '\r', '\n']) {
-        output.write_all(b"\"")?;
-        for byte in value.bytes() {
-            if byte == b'"' {
-                output.write_all(b"\"\"")?;
-            } else {
-                output.write_all(&[byte])?;
-            }
-        }
-        output.write_all(b"\"")
-    } else {
-        output.write_all(value.as_bytes())
-    }
 }
 
 fn error_response(id: Option<u64>, code: ErrorCode, msg: impl Into<String>) -> Response {
@@ -868,7 +749,7 @@ fn termination_requested() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wax_core::{Cell, CellType, Document, Sheet};
+    use wax_core::{Cell, CellType, CellValue, Document, Sheet};
 
     fn store_with_cell(cell: Cell) -> WorkbookStore {
         WorkbookStore::from_document(Document::success(
@@ -911,40 +792,59 @@ mod tests {
 
     #[test]
     fn csv_raw_values_use_protocol_spellings() {
-        let cells = [
-            WindowCell {
-                s: None,
-                t: CellType::N,
-                v: Some(CellValue::Number(1.25)),
-                d: None,
-                f: None,
-                fmt: None,
-            },
-            WindowCell {
-                s: None,
-                t: CellType::B,
-                v: Some(CellValue::Bool(false)),
-                d: None,
-                f: None,
-                fmt: None,
-            },
-            WindowCell {
-                s: None,
-                t: CellType::N,
-                v: None,
-                d: None,
-                f: Some("A1".to_owned()),
-                fmt: None,
-            },
-        ];
-        let mut output = Vec::new();
-        for (index, cell) in cells.iter().enumerate() {
-            if index > 0 {
-                output.push(b',');
-            }
-            write_csv_field(&mut output, cell).expect("field should write");
-        }
-        assert_eq!(output, b"1.25,FALSE,");
+        let store = WorkbookStore::from_document(Document::success(
+            "0.1.0",
+            "test.xlsx",
+            vec![Sheet {
+                col_infos: Vec::new(),
+                name: "Sheet1".to_owned(),
+                index: 0,
+                rows: 1,
+                cols: 3,
+                truncated: false,
+                merges: Vec::new(),
+                cells: vec![
+                    Cell {
+                        s: None,
+                        r: 0,
+                        c: 0,
+                        t: CellType::N,
+                        v: Some(CellValue::Number(1.25)),
+                        d: None,
+                        f: None,
+                        fmt: None,
+                    },
+                    Cell {
+                        s: None,
+                        r: 0,
+                        c: 1,
+                        t: CellType::B,
+                        v: Some(CellValue::Bool(false)),
+                        d: None,
+                        f: None,
+                        fmt: None,
+                    },
+                    Cell {
+                        s: None,
+                        r: 0,
+                        c: 2,
+                        t: CellType::N,
+                        v: None,
+                        d: None,
+                        f: Some("A1".to_owned()),
+                        fmt: None,
+                    },
+                ],
+            }],
+            Vec::new(),
+        ));
+        let temp = tempfile::tempdir().expect("temp directory");
+        let out = temp.path().join("raw.csv");
+        export_csv(&store, 0, &out, &AtomicBool::new(false)).expect("export should work");
+        assert_eq!(
+            std::fs::read(&out).expect("csv should be readable"),
+            b"1.25,FALSE,\r\n"
+        );
     }
 
     #[test]
