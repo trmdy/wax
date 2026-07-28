@@ -1,6 +1,6 @@
 # wax mismatch triage
 
-Generated: `2026-07-28T09:10:59Z`
+Generated: `2026-07-28T18:45:19Z`
 
 Files compared: 2044.
 
@@ -59,3 +59,11 @@ Counts include private corpus files; example paths deliberately omit them.
 | <code># ??/??</code> | 163 | <code>corpus/files/poi/test-data/spreadsheet/54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_54686_fraction_formats.xls.xlsb</code>, <code>corpus/files/sheetjs/test_files/number_format.ods</code>, <code>corpus/files/sheetjs/test_files/number_format.xls</code> |
 | <code>_(* #,##0_);_(* \(#,##0\);_(* "-"??_);_(@_)</code> | 156 | <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_15228.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_15228.xls.xlsb</code> |
 | <code>[$-1010409]0.000%</code> | 132 | <code>corpus/files/poi/test-data/spreadsheet/47251.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_47251.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_47251.xls.xlsb</code> |
+
+## Round-trip merge defects
+
+No disagreements observed.
+
+## Oracle read-back failures on wax-clean exports
+
+No disagreements observed.

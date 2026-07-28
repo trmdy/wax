@@ -1,6 +1,6 @@
 # wax compatibility scoreboard
 
-Generated: `2026-07-28T09:10:59Z`
+Generated: `2026-07-28T18:45:19Z`
 
 Corpus: 2044 attempted, 0 skipped.
 
@@ -13,11 +13,22 @@ Corpus: 2044 attempted, 0 skipped.
 | display-string match % | 97.09% (2789543/2873203) | reference |
 | formula fidelity % | 18.19% (82149/451733) | reference |
 | cached-result fidelity % | 53.53% (241796/451733) | reference |
-| p50 parse time | 1 ms | 8 ms |
-| p95 parse time | 9 ms | 90 ms |
-| peak RSS (p50 / max) | 2.88 MiB / 662.25 MiB | 89.02 MiB / 1.18 GiB |
-| serve peak RSS (p50 / max) | 3.03 MiB / 737.30 MiB | n/a |
-| window latency (p50 / p95) | 7.700 ms / 12.257 ms | n/a |
+| p50 parse time | 1 ms | 10 ms |
+| p95 parse time | 10 ms | 53 ms |
+| peak RSS (p50 / max) | 3.16 MiB / 651.53 MiB | 95.92 MiB / 1.17 GiB |
+| serve peak RSS (p50 / max) | 3.34 MiB / 753.44 MiB | n/a |
+| window latency (p50 / p95) | 6.880 ms / 11.268 ms | n/a |
+
+## Writer round-trip
+
+| Metric | Result |
+| --- | ---: |
+| round-trip files clean % | 94.57% (1846/1952) |
+| round-trip value fidelity % | 99.56% (2065753/2074802) |
+| round-trip display fidelity % | 99.93% (2073342/2074802) |
+| oracle read-back open % | 100.00% (1949/1949) |
+| soffice-open rate | 100.00% (185/185) |
+| truncated models skipped | 4 |
 
 ## Per-extension compatibility
 
