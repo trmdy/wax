@@ -247,6 +247,14 @@ or displace W3A–D. Three work items, in priority order:
    (`BrtFmt`/`BrtXF`) from the zip directly. Wire into
    `calamine_reader.rs` exactly like the xlsx styles path; `d` still comes
    only from `wax_fmt::render`.
+   *Scope addition (2026-07-28, after W3B's outlier profile):* an
+   **extent-bomb guard** rides along with the BIFF scanner — corpus
+   POI `51535.xls` (41,984 bytes) declares a 65536×256 BIFF extent and
+   calamine's dense `Range` allocation transiently costs ~1.0 GiB RSS for
+   zero cells. Before materializing an xls range, pre-scan `DIMENSIONS`;
+   declared extent > 8,000,000 cells → structured `bomb` error naming the
+   extent and cap. Dense-extent bombs on other containers are a noted W5
+   hazard (W3C's timeout is the v0 backstop there).
 2. **xlsb value-match investigation** (73.89% vs xls 98.11%) — triage a
    sample of mismatching files (`harness/triage.md` has buckets), find the
    systematic cause(s), fix what's ours, adjudicate what's SheetJS's
