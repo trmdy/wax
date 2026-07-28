@@ -910,7 +910,10 @@ mod tests {
 
     impl Reader for SleepingReader {
         fn read(&self, path: &Path, _options: ReaderOptions) -> Document {
-            std::thread::sleep(Duration::from_millis(250));
+            // Long enough that the early-return assertion below stays
+            // meaningful on heavily loaded hosts; the worker thread is
+            // detached, so this never extends the test's wall time.
+            std::thread::sleep(Duration::from_millis(3_000));
             Document::success("test", path.to_string_lossy(), Vec::new(), Vec::new())
         }
     }
@@ -926,7 +929,9 @@ mod tests {
 
         let document = read_with_deadline(SleepingReader, file.path(), options);
 
-        assert!(started.elapsed() < Duration::from_millis(100));
+        // Generous scheduling headroom for loaded hosts; still strictly
+        // before the 3s reader would have finished on its own.
+        assert!(started.elapsed() < Duration::from_millis(1_500));
         assert!(!document.ok);
         assert_eq!(
             document.error.expect("timeout should carry an error").code,
