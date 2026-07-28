@@ -172,7 +172,7 @@
       "branch": "agent/wax-w3c-safety",
       "worktree": ".worktrees/w3c",
       "bee": "coordinator (CL.d73) \u2014 takeover after two wedged bees",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "crates/wax-read/src/safety.rs",
         "crates/wax-read/src/lib.rs (hooks only)",
