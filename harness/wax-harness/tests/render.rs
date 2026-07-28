@@ -108,11 +108,15 @@ fn committed_scoreboard_snapshot_matches_its_json_sources() {
 }
 
 #[test]
-fn legacy_scoreboard_fields_are_stable_when_round_trip_is_absent() {
+fn committed_scoreboard_json_round_trips_through_the_typed_model_losslessly() {
+    // Originally also asserted `round_trip.is_none()`, which was only true
+    // before the W4 writer landed real round-trip numbers in the committed
+    // snapshot. The durable property is that the typed model loses nothing:
+    // absent-roundTrip legacy stability is pinned by the runner integration
+    // fixtures instead.
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let original = fs::read(repo_root.join("harness/scoreboard.json")).unwrap();
     let scoreboard: Scoreboard = serde_json::from_slice(&original).unwrap();
-    assert!(scoreboard.metrics.round_trip.is_none());
 
     let original: serde_json::Value = serde_json::from_slice(&original).unwrap();
     let rendered = serde_json::to_value(&scoreboard).unwrap();
