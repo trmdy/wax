@@ -321,7 +321,7 @@ fn aggregate_round_trip(
         .count();
     let has_available_evidence = attempted
         .iter()
-        .any(|round_trip| !round_trip.is_unavailable());
+        .any(|round_trip| export_stage_succeeded(round_trip));
     let export_unavailable = unavailable != 0 && !has_available_evidence;
 
     let status = RoundTripStatusMetric {
@@ -381,6 +381,14 @@ fn aggregate_round_trip(
         skipped_truncated,
         status,
     }
+}
+
+fn export_stage_succeeded(round_trip: &crate::roundtrip::RoundTripFileMetrics) -> bool {
+    matches!(round_trip.status.as_str(), "clean" | "defect")
+        || round_trip
+            .error
+            .as_ref()
+            .is_some_and(|error| matches!(error.stage.as_str(), "waxReadBack" | "oracleReadBack"))
 }
 
 impl RatioMetric {
@@ -791,6 +799,57 @@ mod tests {
             Some("xlsx export unavailable")
         );
         assert_eq!(round_trip.files_clean.total, 1);
+        assert_eq!(round_trip.files_clean.percent, None);
+        assert_eq!(round_trip.value_match.percent, None);
+        assert_eq!(round_trip.oracle_open_rate.percent, None);
+    }
+
+    #[test]
+    fn unavailable_exports_with_tempdir_failure_remain_unavailable() {
+        let mut results = vec![
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "xls",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+        ];
+        results[0].round_trip = Some(RoundTripFileMetrics {
+            status: "xlsxExportUnavailable".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "internal".to_owned(),
+                msg: "writer stub".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+        results[1].round_trip = Some(RoundTripFileMetrics {
+            status: "failed".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "temporary".to_owned(),
+                code: "io".to_owned(),
+                msg: "failed to create round-trip directory".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+
+        let scoreboard = aggregate(&results, 0, "2026-07-28T00:00:00Z");
+        let round_trip = scoreboard.metrics.round_trip.unwrap();
+
+        assert_eq!(round_trip.status.status, "unavailable");
+        assert_eq!(
+            round_trip.status.reason.as_deref(),
+            Some("xlsx export unavailable")
+        );
+        assert_eq!(round_trip.files_clean.total, 2);
         assert_eq!(round_trip.files_clean.percent, None);
         assert_eq!(round_trip.value_match.percent, None);
         assert_eq!(round_trip.oracle_open_rate.percent, None);

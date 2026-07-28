@@ -121,6 +121,15 @@ fn render_oracle_read_back_defects(output: &mut String, results: &[FileMetrics])
         "\n## Oracle read-back failures on wax-clean exports\n"
     )
     .unwrap();
+    let private_count = results
+        .iter()
+        .filter(|result| {
+            result.private
+                && result.round_trip.as_ref().is_some_and(|round_trip| {
+                    round_trip.is_clean() && round_trip.oracle_open == Some(false)
+                })
+        })
+        .count();
     let defects: Vec<_> = results
         .iter()
         .filter(|result| {
@@ -130,8 +139,18 @@ fn render_oracle_read_back_defects(output: &mut String, results: &[FileMetrics])
                 })
         })
         .collect();
-    if defects.is_empty() {
+    if defects.is_empty() && private_count == 0 {
         writeln!(output, "No disagreements observed.").unwrap();
+        return;
+    }
+    if private_count != 0 {
+        writeln!(
+            output,
+            "{private_count} private file(s) had oracle read-back failures; paths are omitted.\n"
+        )
+        .unwrap();
+    }
+    if defects.is_empty() {
         return;
     }
     writeln!(
@@ -248,6 +267,7 @@ mod tests {
     use super::render_triage;
     use crate::compare::{CountMetric, CoverageMetric, FileMetrics, MismatchBucket, ToolSummary};
     use crate::model::DumpError;
+    use crate::roundtrip::{RoundTripFailure, RoundTripFileMetrics};
 
     fn file(path: &str, private: bool) -> FileMetrics {
         FileMetrics {
@@ -315,5 +335,27 @@ mod tests {
         let markdown = render_triage(&[], "2026-07-28T00:00:00Z");
 
         assert_eq!(markdown.matches("No disagreements observed.").count(), 5);
+    }
+
+    #[test]
+    fn oracle_triage_counts_private_failures_without_leaking_paths() {
+        let mut result = file("/private/secret-ledger.xlsx", true);
+        result.round_trip = Some(RoundTripFileMetrics {
+            status: "clean".to_owned(),
+            oracle_open: Some(false),
+            oracle_error: Some(RoundTripFailure {
+                stage: "oracleReadBack".to_owned(),
+                code: "bad_zip".to_owned(),
+                msg: "private details".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+
+        let markdown = render_triage(&[result], "2026-07-28T00:00:00Z");
+
+        assert!(markdown
+            .contains("1 private file(s) had oracle read-back failures; paths are omitted."));
+        assert!(!markdown.contains("secret-ledger"));
+        assert!(!markdown.contains("private details"));
     }
 }
