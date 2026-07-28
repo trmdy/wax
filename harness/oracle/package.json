@@ -1,0 +1,18 @@
+{
+  "name": "@wax/oracle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pinned SheetJS differential oracle for wax",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "fixtures": "node test/generate-fixtures.js",
+    "test": "npm run fixtures && node --test test/oracle.test.js",
+    "check": "node --check run.js && node --check lib/oracle.js && node --check schema.js && node --check test/generate-fixtures.js && node --check test/oracle.test.js && npm test"
+  },
+  "dependencies": {
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}
