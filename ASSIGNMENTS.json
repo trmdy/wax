@@ -301,7 +301,7 @@
       "branch": "agent/wax-w5b-triage",
       "worktree": ".worktrees/w5b",
       "bee": "wax-w5b",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "crates/wax-read/** (except safety.rs)",
         "crates/wax-fmt/**",
