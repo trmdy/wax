@@ -6,6 +6,9 @@ license.workspace = true
 
 [dependencies]
 calamine.workspace = true
+cfb = "0.14.0"
+codepage = "0.1.2"
+encoding_rs = "0.8.35"
 quick-xml.workspace = true
 wax-core = { path = "../wax-core" }
 wax-fmt = { path = "../wax-fmt" }
