@@ -1,8 +1,15 @@
 # wax differential harness
 
-This standalone W1 crate compares normalized wax and SheetJS dumps and writes
-`harness/results.jsonl`, `harness/scoreboard.json`, and the repository-root
-`SCOREBOARD.md`.
+This standalone crate compares normalized wax and SheetJS dumps and writes:
+
+- `harness/results.jsonl` — additive per-file comparison records.
+- `harness/scoreboard.json` and the repository-root `SCOREBOARD.md` — aggregate
+  compatibility, including display-string match and per-extension rows.
+- `harness/format-coverage.json` — per-format display coverage and exact-match
+  metrics. When present, `harness/formats/corpus-formats.json` supplies the
+  corpus-wide ranking without becoming a required dependency.
+- `harness/triage.md` — top open, value, and display disagreement buckets with
+  privacy-filtered examples.
 
 The public entry point is run from the repository root:
 

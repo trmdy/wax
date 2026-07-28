@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::compare::{CountMetric, CoverageMetric, FileMetrics};
@@ -18,30 +20,42 @@ pub struct AggregateMetrics {
     pub files_opened: OpenedMetrics,
     pub cell_value_match: RatioMetric,
     pub display_string_coverage: ToolCoverageMetrics,
+    #[serde(default)]
+    pub display_string_match: RatioMetric,
     pub formula_fidelity: RatioMetric,
     pub cached_result_fidelity: RatioMetric,
     pub parse_time_ms: ToolPercentileMetrics,
     pub peak_rss_bytes: ToolRssMetrics,
     pub window_latency_ms: ToolNullableMetrics,
+    #[serde(default)]
+    pub per_extension: BTreeMap<String, ExtensionMetrics>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct OpenedMetrics {
     pub wax: RatioMetric,
     pub sheetjs: RatioMetric,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolCoverageMetrics {
     pub wax: RatioMetric,
     pub sheetjs: RatioMetric,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RatioMetric {
     pub matched: u64,
     pub total: u64,
     pub percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionMetrics {
+    pub files_attempted: u64,
+    pub files_opened: OpenedMetrics,
+    pub cell_value_match: RatioMetric,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,6 +98,7 @@ pub fn aggregate(
     let sheetjs_opened = results.iter().filter(|result| result.sheetjs.ok).count() as u64;
 
     let cell_value_match = sum_counts(results.iter().map(|result| result.cell_value_match));
+    let display_string_match = sum_counts(results.iter().map(|result| result.display_string_match));
     let formula_fidelity = sum_counts(results.iter().map(|result| result.formula_fidelity));
     let cached_result_fidelity =
         sum_counts(results.iter().map(|result| result.cached_result_fidelity));
@@ -125,6 +140,7 @@ pub fn aggregate(
                 wax: RatioMetric::from_coverage(wax_display),
                 sheetjs: RatioMetric::from_coverage(sheetjs_display),
             },
+            display_string_match: RatioMetric::from_count(display_string_match),
             formula_fidelity: RatioMetric::from_count(formula_fidelity),
             cached_result_fidelity: RatioMetric::from_count(cached_result_fidelity),
             parse_time_ms: ToolPercentileMetrics {
@@ -139,12 +155,13 @@ pub fn aggregate(
                 wax: None,
                 sheetjs: None,
             },
+            per_extension: per_extension(results),
         },
     }
 }
 
 impl RatioMetric {
-    fn new(matched: u64, total: u64) -> Self {
+    pub(crate) fn new(matched: u64, total: u64) -> Self {
         Self {
             matched,
             total,
@@ -152,13 +169,46 @@ impl RatioMetric {
         }
     }
 
-    fn from_count(metric: CountMetric) -> Self {
+    pub(crate) fn from_count(metric: CountMetric) -> Self {
         Self::new(metric.matched, metric.total)
     }
 
-    fn from_coverage(metric: CoverageMetric) -> Self {
+    pub(crate) fn from_coverage(metric: CoverageMetric) -> Self {
         Self::new(metric.covered, metric.total)
     }
+}
+
+fn per_extension(results: &[FileMetrics]) -> BTreeMap<String, ExtensionMetrics> {
+    let mut grouped = BTreeMap::<String, Vec<&FileMetrics>>::new();
+    for result in results {
+        let extension = if result.ext.is_empty() {
+            "unknown".to_owned()
+        } else {
+            result.ext.to_ascii_lowercase()
+        };
+        grouped.entry(extension).or_default().push(result);
+    }
+
+    grouped
+        .into_iter()
+        .map(|(extension, results)| {
+            let attempted = results.len() as u64;
+            let wax_opened = results.iter().filter(|result| result.wax.ok).count() as u64;
+            let sheetjs_opened = results.iter().filter(|result| result.sheetjs.ok).count() as u64;
+            let cell_value_match = sum_counts(results.iter().map(|result| result.cell_value_match));
+            (
+                extension,
+                ExtensionMetrics {
+                    files_attempted: attempted,
+                    files_opened: OpenedMetrics {
+                        wax: RatioMetric::new(wax_opened, attempted),
+                        sheetjs: RatioMetric::new(sheetjs_opened, attempted),
+                    },
+                    cell_value_match: RatioMetric::from_count(cell_value_match),
+                },
+            )
+        })
+        .collect()
 }
 
 fn sum_counts(metrics: impl Iterator<Item = CountMetric>) -> CountMetric {
@@ -204,6 +254,42 @@ fn nearest_rank(values: &[u64], percentile: usize) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{aggregate, nearest_rank};
+    use crate::compare::{CountMetric, CoverageMetric, FileMetrics, ToolSummary};
+
+    fn file(
+        ext: &str,
+        wax_ok: bool,
+        sheetjs_ok: bool,
+        cell_value_match: CountMetric,
+        display_string_match: CountMetric,
+    ) -> FileMetrics {
+        let summary = |ok| ToolSummary {
+            ok,
+            error: None,
+            wall_ms: None,
+            peak_rss_bytes: None,
+            truncated: false,
+        };
+        FileMetrics {
+            id: format!("fixture.{ext}"),
+            path: format!("fixture.{ext}"),
+            sha256: "abc".to_owned(),
+            ext: ext.to_owned(),
+            private: false,
+            wax: summary(wax_ok),
+            sheetjs: summary(sheetjs_ok),
+            cell_value_match,
+            wax_display_coverage: CoverageMetric::default(),
+            sheetjs_display_coverage: CoverageMetric::default(),
+            display_string_match,
+            formula_fidelity: CountMetric::default(),
+            cached_result_fidelity: CountMetric::default(),
+            format_display: Vec::new(),
+            value_mismatches: Vec::new(),
+            display_mismatches: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
 
     #[test]
     fn nearest_rank_percentiles_are_deterministic() {
@@ -220,8 +306,61 @@ mod tests {
         assert_eq!(scoreboard.files_attempted, 0);
         assert_eq!(scoreboard.metrics.files_opened.wax.percent, None);
         assert_eq!(scoreboard.metrics.cell_value_match.percent, None);
+        assert_eq!(scoreboard.metrics.display_string_match.percent, None);
         assert_eq!(scoreboard.metrics.parse_time_ms.wax.p50, None);
         assert_eq!(scoreboard.metrics.peak_rss_bytes.sheetjs.max, None);
         assert_eq!(scoreboard.metrics.window_latency_ms.wax, None);
+        assert!(scoreboard.metrics.per_extension.is_empty());
+    }
+
+    #[test]
+    fn aggregates_display_match_and_manifest_extensions() {
+        let results = vec![
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric {
+                    matched: 8,
+                    total: 10,
+                },
+                CountMetric {
+                    matched: 4,
+                    total: 5,
+                },
+            ),
+            file(
+                "XLSX",
+                false,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "ods",
+                true,
+                true,
+                CountMetric {
+                    matched: 1,
+                    total: 2,
+                },
+                CountMetric {
+                    matched: 1,
+                    total: 2,
+                },
+            ),
+        ];
+
+        let scoreboard = aggregate(&results, 0, "2026-07-28T00:00:00Z");
+
+        assert_eq!(scoreboard.metrics.display_string_match.matched, 5);
+        assert_eq!(scoreboard.metrics.display_string_match.total, 7);
+        let xlsx = &scoreboard.metrics.per_extension["xlsx"];
+        assert_eq!(xlsx.files_attempted, 2);
+        assert_eq!(xlsx.files_opened.wax.matched, 1);
+        assert_eq!(xlsx.files_opened.sheetjs.matched, 2);
+        assert_eq!(xlsx.cell_value_match.matched, 8);
+        assert_eq!(xlsx.cell_value_match.total, 10);
+        assert_eq!(scoreboard.metrics.per_extension["ods"].files_attempted, 1);
     }
 }

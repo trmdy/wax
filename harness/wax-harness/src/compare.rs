@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -87,19 +88,46 @@ pub struct CoverageMetric {
     pub total: u64,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatDisplayMetric {
+    pub code: String,
+    pub oracle_cells: u64,
+    pub wax_display_coverage: CoverageMetric,
+    pub display_string_match: CountMetric,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MismatchBucket {
+    pub category: String,
+    pub count: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileMetrics {
     pub id: String,
     pub path: String,
     pub sha256: String,
+    #[serde(default)]
+    pub ext: String,
+    #[serde(default)]
+    pub private: bool,
     pub wax: ToolSummary,
     pub sheetjs: ToolSummary,
     pub cell_value_match: CountMetric,
     pub wax_display_coverage: CoverageMetric,
     pub sheetjs_display_coverage: CoverageMetric,
+    #[serde(default)]
+    pub display_string_match: CountMetric,
     pub formula_fidelity: CountMetric,
     pub cached_result_fidelity: CountMetric,
+    #[serde(default)]
+    pub format_display: Vec<FormatDisplayMetric>,
+    #[serde(default)]
+    pub value_mismatches: Vec<MismatchBucket>,
+    #[serde(default)]
+    pub display_mismatches: Vec<MismatchBucket>,
     pub warnings: Vec<String>,
 }
 
@@ -112,17 +140,29 @@ pub fn compare(
 ) -> FileMetrics {
     let wax_summary = wax.summary();
     let sheetjs_summary = sheetjs.summary();
+    let path = path.into();
+    let ext = Path::new(&path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let mut file = FileMetrics {
         id: id.into(),
-        path: path.into(),
+        path,
         sha256: sha256.into(),
+        ext,
+        private: false,
         wax: wax_summary,
         sheetjs: sheetjs_summary,
         cell_value_match: CountMetric::default(),
         wax_display_coverage: coverage(wax.document.as_ref()),
         sheetjs_display_coverage: coverage(sheetjs.document.as_ref()),
+        display_string_match: CountMetric::default(),
         formula_fidelity: CountMetric::default(),
         cached_result_fidelity: CountMetric::default(),
+        format_display: format_display_metrics(wax.document.as_ref(), sheetjs.document.as_ref()),
+        value_mismatches: Vec::new(),
+        display_mismatches: Vec::new(),
         warnings: Vec::new(),
     };
 
@@ -149,6 +189,8 @@ pub fn compare(
     keys.sort_unstable();
     keys.dedup();
 
+    let mut value_mismatches = BTreeMap::new();
+    let mut display_mismatches = BTreeMap::new();
     for key in keys {
         let wax_cell = wax_cells.get(&key).copied();
         let sheetjs_cell = sheetjs_cells.get(&key).copied();
@@ -156,6 +198,26 @@ pub fn compare(
         file.cell_value_match.total += 1;
         if cells_have_equal_values(wax_cell, sheetjs_cell) {
             file.cell_value_match.matched += 1;
+        } else {
+            increment(
+                &mut value_mismatches,
+                value_mismatch_category(wax_cell, sheetjs_cell),
+            );
+        }
+
+        if let (Some(wax_display), Some(sheetjs_display)) = (
+            wax_cell.and_then(|cell| cell.d.as_deref()),
+            sheetjs_cell.and_then(|cell| cell.d.as_deref()),
+        ) {
+            file.display_string_match.total += 1;
+            if wax_display == sheetjs_display {
+                file.display_string_match.matched += 1;
+            } else {
+                increment(
+                    &mut display_mismatches,
+                    format_category(sheetjs_cell.and_then(|cell| cell.fmt.as_deref())),
+                );
+            }
         }
 
         let has_formula = wax_cell.and_then(|cell| cell.f.as_ref()).is_some()
@@ -172,6 +234,8 @@ pub fn compare(
             }
         }
     }
+    file.value_mismatches = buckets(value_mismatches);
+    file.display_mismatches = buckets(display_mismatches);
 
     file
 }
@@ -199,6 +263,50 @@ fn coverage(document: Option<&DumpDocument>) -> CoverageMetric {
             metric
         },
     )
+}
+
+fn format_display_metrics(
+    wax: Option<&DumpDocument>,
+    sheetjs: Option<&DumpDocument>,
+) -> Vec<FormatDisplayMetric> {
+    let Some(sheetjs) = sheetjs.filter(|document| document.ok) else {
+        return Vec::new();
+    };
+    let wax_cells = wax
+        .filter(|document| document.ok)
+        .map(indexed_cells)
+        .unwrap_or_default();
+    let mut formats = BTreeMap::<String, FormatDisplayMetric>::new();
+
+    for (coordinate, sheetjs_cell) in indexed_cells(sheetjs) {
+        let Some(code) = sheetjs_cell.fmt.as_deref() else {
+            continue;
+        };
+        let metric = formats
+            .entry(code.to_owned())
+            .or_insert_with(|| FormatDisplayMetric {
+                code: code.to_owned(),
+                ..FormatDisplayMetric::default()
+            });
+        metric.oracle_cells += 1;
+        metric.wax_display_coverage.total += 1;
+
+        let wax_display = wax_cells
+            .get(&coordinate)
+            .and_then(|cell| cell.d.as_deref());
+        if wax_display.is_some() {
+            metric.wax_display_coverage.covered += 1;
+        }
+        if let (Some(wax_display), Some(sheetjs_display)) = (wax_display, sheetjs_cell.d.as_deref())
+        {
+            metric.display_string_match.total += 1;
+            if wax_display == sheetjs_display {
+                metric.display_string_match.matched += 1;
+            }
+        }
+    }
+
+    formats.into_values().collect()
 }
 
 fn cells_have_equal_values(wax: Option<&Cell>, sheetjs: Option<&Cell>) -> bool {
@@ -234,6 +342,40 @@ fn formulas_equal(wax: Option<&Cell>, sheetjs: Option<&Cell>) -> bool {
         (Some(wax), Some(sheetjs)) => normalize_formula(wax) == normalize_formula(sheetjs),
         _ => false,
     }
+}
+
+fn value_mismatch_category(wax: Option<&Cell>, sheetjs: Option<&Cell>) -> String {
+    format!(
+        "wax:{} / SheetJS:{}",
+        cell_type_label(wax),
+        cell_type_label(sheetjs)
+    )
+}
+
+fn cell_type_label(cell: Option<&Cell>) -> &'static str {
+    match cell.map(|cell| cell.t) {
+        Some(CellType::Number) => "n",
+        Some(CellType::Text) => "s",
+        Some(CellType::Bool) => "b",
+        Some(CellType::Error) => "e",
+        Some(CellType::Date) => "d",
+        None => "missing",
+    }
+}
+
+fn format_category(code: Option<&str>) -> String {
+    code.unwrap_or("General").to_owned()
+}
+
+fn increment(counts: &mut BTreeMap<String, u64>, category: String) {
+    *counts.entry(category).or_default() += 1;
+}
+
+fn buckets(counts: BTreeMap<String, u64>) -> Vec<MismatchBucket> {
+    counts
+        .into_iter()
+        .map(|(category, count)| MismatchBucket { category, count })
+        .collect()
 }
 
 fn normalize_formula(formula: &str) -> String {
@@ -319,6 +461,10 @@ mod tests {
         json!({"r": r, "c": 0, "t": t, "v": v, "d": d, "f": f, "fmt": null})
     }
 
+    fn formatted_cell(r: u64, v: Value, d: Value, fmt: &str) -> Value {
+        json!({"r": r, "c": 0, "t": "n", "v": v, "d": d, "f": null, "fmt": fmt})
+    }
+
     fn compare_cells(wax_cells: Value, sheetjs_cells: Value) -> super::FileMetrics {
         let wax = ToolObservation::document(dump(Tool::Wax, wax_cells, false, true));
         let sheetjs = ToolObservation::document(dump(Tool::Sheetjs, sheetjs_cells, false, true));
@@ -336,6 +482,36 @@ mod tests {
         assert_eq!(metrics.cell_value_match.total, 1);
         assert_eq!(metrics.wax_display_coverage.covered, 0);
         assert_eq!(metrics.sheetjs_display_coverage.covered, 1);
+        assert_eq!(metrics.display_string_match.total, 0);
+    }
+
+    #[test]
+    fn rich_displays_count_exact_matches_and_per_format_coverage() {
+        let metrics = compare_cells(
+            json!([
+                formatted_cell(0, json!(1), json!("1.00"), "0.00"),
+                formatted_cell(1, json!(2), Value::Null, "0.00"),
+                formatted_cell(2, json!(3), json!("wrong"), "0.00")
+            ]),
+            json!([
+                formatted_cell(0, json!(1), json!("1.00"), "0.00"),
+                formatted_cell(1, json!(2), json!("2.00"), "0.00"),
+                formatted_cell(2, json!(3), json!("3.00"), "0.00")
+            ]),
+        );
+
+        assert_eq!(metrics.display_string_match.matched, 1);
+        assert_eq!(metrics.display_string_match.total, 2);
+        assert_eq!(metrics.format_display.len(), 1);
+        let format = &metrics.format_display[0];
+        assert_eq!(format.code, "0.00");
+        assert_eq!(format.oracle_cells, 3);
+        assert_eq!(format.wax_display_coverage.covered, 2);
+        assert_eq!(format.wax_display_coverage.total, 3);
+        assert_eq!(format.display_string_match.matched, 1);
+        assert_eq!(format.display_string_match.total, 2);
+        assert_eq!(metrics.display_mismatches[0].category, "0.00");
+        assert_eq!(metrics.display_mismatches[0].count, 1);
     }
 
     #[test]
@@ -385,6 +561,8 @@ mod tests {
         );
         assert_eq!(metrics.cell_value_match.matched, 0);
         assert_eq!(metrics.cell_value_match.total, 1);
+        assert_eq!(metrics.value_mismatches[0].category, "wax:n / SheetJS:s");
+        assert_eq!(metrics.value_mismatches[0].count, 1);
     }
 
     #[test]
@@ -488,5 +666,23 @@ mod tests {
         assert!(metrics.sheetjs.ok);
         assert_eq!(metrics.cell_value_match.total, 0);
         assert_eq!(metrics.formula_fidelity.total, 0);
+    }
+
+    #[test]
+    fn wax_open_failure_counts_zero_coverage_for_oracle_format_cells() {
+        let wax = ToolObservation::document(dump(Tool::Wax, json!([]), false, false));
+        let sheetjs = ToolObservation::document(dump(
+            Tool::Sheetjs,
+            json!([formatted_cell(0, json!(1), json!("1.00"), "0.00")]),
+            false,
+            true,
+        ));
+        let metrics = compare("id", "fixture.xlsx", "abc", &wax, &sheetjs);
+
+        assert_eq!(metrics.format_display.len(), 1);
+        assert_eq!(metrics.format_display[0].oracle_cells, 1);
+        assert_eq!(metrics.format_display[0].wax_display_coverage.covered, 0);
+        assert_eq!(metrics.format_display[0].wax_display_coverage.total, 1);
+        assert_eq!(metrics.format_display[0].display_string_match.total, 0);
     }
 }

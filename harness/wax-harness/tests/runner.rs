@@ -81,7 +81,32 @@ fn runner_records_three_fixture_files_including_a_tool_crash() {
     assert_eq!(scoreboard["metrics"]["filesOpened"]["wax"]["matched"], 2);
     assert_eq!(scoreboard["metrics"]["cellValueMatch"]["matched"], 1);
     assert_eq!(scoreboard["metrics"]["cellValueMatch"]["total"], 2);
+    assert_eq!(scoreboard["metrics"]["displayStringMatch"]["matched"], 1);
+    assert_eq!(scoreboard["metrics"]["displayStringMatch"]["total"], 2);
+    assert_eq!(
+        scoreboard["metrics"]["perExtension"]["xlsx"]["filesAttempted"],
+        2
+    );
+    assert_eq!(
+        scoreboard["metrics"]["perExtension"]["ods"]["filesAttempted"],
+        1
+    );
     assert_eq!(scoreboard["metrics"]["windowLatencyMs"]["wax"], Value::Null);
+    let formats: Value = serde_json::from_slice(
+        &fs::read(root.path().join("harness/format-coverage.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(formats["joinedCorpusFormats"], false);
+    assert_eq!(formats["formats"][0]["code"], "0.00");
+    assert_eq!(formats["formats"][0]["cellCount"], 2);
+    assert_eq!(formats["formats"][0]["waxDisplayCoverage"]["matched"], 2);
+    assert_eq!(formats["formats"][0]["displayStringMatch"]["matched"], 1);
+    assert_eq!(formats["formats"][0]["displayStringMatch"]["total"], 2);
+    let triage = fs::read_to_string(root.path().join("harness/triage.md")).unwrap();
+    assert!(triage.contains("<code>process_exit</code>"));
+    assert!(triage.contains("<code>wax:n / SheetJS:n</code>"));
+    assert!(triage.contains("<code>0.00</code>"));
+    assert!(triage.contains("<code>files/diff.xlsx</code>"));
     assert!(root.path().join("SCOREBOARD.md").is_file());
 }
 
@@ -113,6 +138,37 @@ fn run_sh_is_an_end_to_end_entry_point_for_the_fake_contract_tools() {
     );
     let markdown = fs::read_to_string(root.path().join("SCOREBOARD.md")).unwrap();
     assert!(markdown.contains("| window latency | n/a | n/a |"));
+    assert!(markdown.contains("<code>xlsx</code> (W2 gate)"));
+    assert!(markdown.contains("## Top format-code display compatibility"));
+    assert!(root.path().join("harness/format-coverage.json").is_file());
+    assert!(root.path().join("harness/triage.md").is_file());
+}
+
+#[test]
+fn runner_joins_the_optional_corpus_format_ranking() {
+    let root = prepare_repo();
+    fs::create_dir_all(root.path().join("harness/formats")).unwrap();
+    fs::write(
+        root.path().join("harness/formats/corpus-formats.json"),
+        r#"{
+          "formats": [
+            {"code": "0.00", "cellCount": 1234, "fileCount": 99}
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let output = harness_command(root.path()).output().unwrap();
+    assert_success(output);
+
+    let formats: Value = serde_json::from_slice(
+        &fs::read(root.path().join("harness/format-coverage.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(formats["joinedCorpusFormats"], true);
+    assert_eq!(formats["ranking"], "corpusCellCount");
+    assert_eq!(formats["formats"][0]["corpusCellCount"], 1234);
+    assert_eq!(formats["formats"][0]["corpusFileCount"], 99);
 }
 
 #[test]
