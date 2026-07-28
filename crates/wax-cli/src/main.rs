@@ -8,13 +8,13 @@ use std::time::Instant;
 
 use sha2::{Digest, Sha256};
 use wax_proto::PROTO_VERSION;
-use wax_read::{CalamineReader, Reader, ReaderOptions};
+use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
 
 mod serve;
 
 const USAGE: &str = "Usage:
   wax --version
-  wax dump --json <file> [--max-cells N] [--timeout-ms N]
+  wax dump --json <file> [--max-cells N] [--max-bytes N] [--timeout-ms N]
   wax serve [--idle-timeout-ms N] [--max-handles N]";
 
 fn main() -> ExitCode {
@@ -58,22 +58,32 @@ fn run() -> i32 {
 }
 
 fn run_dump(command: DumpCommand) -> i32 {
-    let sha256 = match sha256_file(&command.path) {
-        Ok(sha256) => sha256,
-        Err(error) => {
-            eprintln!("wax: could not hash {}: {error}", command.path.display());
-            return 1;
-        }
-    };
-
     let started = Instant::now();
-    let mut document = CalamineReader.read(
+    let mut document = read_with_deadline(
+        CalamineReader,
         &command.path,
         ReaderOptions {
             max_cells: command.max_cells,
+            max_bytes: command.max_bytes,
             timeout_ms: command.timeout_ms,
+            ..ReaderOptions::default()
         },
     );
+    let skip_hash = document
+        .error
+        .as_ref()
+        .is_some_and(|error| matches!(error.code.as_str(), "timeout" | "too_large"));
+    let sha256 = if skip_hash {
+        String::new()
+    } else {
+        match sha256_file(&command.path) {
+            Ok(sha256) => sha256,
+            Err(error) => {
+                eprintln!("wax: could not hash {}: {error}", command.path.display());
+                return 1;
+            }
+        }
+    };
     document.wall_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     document.peak_rss_bytes = peak_rss_bytes();
     document.sha256 = sha256;
@@ -101,6 +111,7 @@ enum Command {
 struct DumpCommand {
     path: PathBuf,
     max_cells: usize,
+    max_bytes: u64,
     timeout_ms: u64,
 }
 
@@ -117,6 +128,7 @@ fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
     let mut saw_json = false;
     let mut path = None;
     let mut max_cells = ReaderOptions::default().max_cells;
+    let mut max_bytes = ReaderOptions::default().max_bytes;
     let mut timeout_ms = ReaderOptions::default().timeout_ms;
     let mut index = 1;
     while index < arguments.len() {
@@ -136,6 +148,13 @@ fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
                     .ok_or_else(|| "wax: --timeout-ms requires a value".to_owned())?;
                 timeout_ms = parse_number(value, "--timeout-ms")?;
             }
+            Some("--max-bytes") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --max-bytes requires a value".to_owned())?;
+                max_bytes = parse_number(value, "--max-bytes")?;
+            }
             Some(flag) if flag.starts_with('-') => {
                 return Err(format!("wax: unknown option `{flag}`"));
             }
@@ -152,6 +171,7 @@ fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
     Ok(DumpCommand {
         path,
         max_cells,
+        max_bytes,
         timeout_ms,
     })
 }
