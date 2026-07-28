@@ -142,13 +142,13 @@
       "branch": "agent/wax-w3a-proto",
       "worktree": ".worktrees/w3a",
       "bee": "wax-w3a",
-      "state": "planned",
+      "state": "working",
       "owns": [
         "crates/wax-proto/**",
         "crates/wax-cli/**"
       ],
       "brief": "docs/briefs/w3a.md",
-      "beeId": null
+      "beeId": "CO.4e0b"
     },
     {
       "id": "w3b",
@@ -157,13 +157,13 @@
       "branch": "agent/wax-w3b-store",
       "worktree": ".worktrees/w3b",
       "bee": "wax-w3b",
-      "state": "planned",
+      "state": "working",
       "owns": [
         "crates/wax-store/**",
         "crates/wax-core/** (additive only)"
       ],
       "brief": "docs/briefs/w3b.md",
-      "beeId": null
+      "beeId": "CO.227"
     },
     {
       "id": "w3c",
@@ -172,7 +172,7 @@
       "branch": "agent/wax-w3c-safety",
       "worktree": ".worktrees/w3c",
       "bee": "wax-w3c",
-      "state": "planned",
+      "state": "working",
       "owns": [
         "crates/wax-read/src/safety.rs",
         "crates/wax-read/src/lib.rs (hooks only)",
@@ -181,7 +181,7 @@
         ".github/**"
       ],
       "brief": "docs/briefs/w3c.md",
-      "beeId": null
+      "beeId": "CO.a5b"
     },
     {
       "id": "w3d",
@@ -190,13 +190,13 @@
       "branch": "agent/wax-w3d-harness",
       "worktree": ".worktrees/w3d",
       "bee": "wax-w3d",
-      "state": "planned",
+      "state": "working",
       "owns": [
         "harness/wax-harness/**",
         "harness/run.sh"
       ],
       "brief": "docs/briefs/w3d.md",
-      "beeId": null
+      "beeId": "CO.ccbe"
     },
     {
       "id": "w3e",
@@ -205,14 +205,14 @@
       "branch": "agent/wax-w3e-reader",
       "worktree": ".worktrees/w3e",
       "bee": "wax-w3e",
-      "state": "planned",
+      "state": "working",
       "owns": [
         "crates/wax-read/src/calamine_reader.rs",
         "crates/wax-read/** (new style modules)",
         "harness/adjudications.md (append-only)"
       ],
       "brief": "docs/briefs/w3e.md",
-      "beeId": null
+      "beeId": "CO.717b"
     }
   ],
   "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest.",
