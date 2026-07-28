@@ -43,6 +43,8 @@ const DEFAULT_DATETIME_FORMAT: &str = r#"yyyy-mm-dd"T"hh:mm:ss"#;
 const DEFAULT_DATETIME_MILLIS_FORMAT: &str = r#"yyyy-mm-dd"T"hh:mm:ss.000"#;
 const DEFAULT_TIME_FORMAT: &str = "hh:mm:ss";
 const DEFAULT_TIME_MILLIS_FORMAT: &str = "hh:mm:ss.000";
+const UNREPRESENTABLE_MERGES_DROPPED: &str = "unrepresentable merge ranges";
+const CLAMPED_COLUMN_WIDTHS_DROPPED: &str = "column widths clamped to 0..=255";
 
 /// A successful export: bytes written to the output file plus every feature
 /// of the model (or of the source, when the caller merges open-time
@@ -92,12 +94,16 @@ pub fn write_xlsx(
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
     checkpoint(cancel)?;
+    if store.sheet_count() == 0 {
+        return Err(WriteError::new("bad_request", "empty workbook"));
+    }
 
     let mut workbook = Workbook::new();
     let mut formats = HashMap::new();
     let mut dropped = Dropped::default();
     let merge_format = Format::new();
     let mut formula_patches = Vec::new();
+    let mut used_sheet_names = HashSet::new();
 
     for sheet_index in 0..store.sheet_count() {
         checkpoint(cancel)?;
@@ -111,9 +117,18 @@ pub fn write_xlsx(
             dropped.add("source truncated at read time; export is the truncated model");
         }
 
+        let sheet_name = unique_xlsx_sheet_name(&meta.name, &mut used_sheet_names);
+        if sheet_name != meta.name {
+            dropped.add(format!(
+                "sheet name '{original}' sanitized to '{sanitized}'",
+                original = meta.name,
+                sanitized = sheet_name,
+            ));
+        }
+
         let worksheet = workbook.add_worksheet();
         worksheet
-            .set_name(&meta.name)
+            .set_name(&sheet_name)
             .map_err(|error| xlsx_error("set worksheet name", out, error))?;
         // An empty default cached result preserves formula cells whose source
         // file did not carry a cached value. Formula instances with a cached
@@ -125,18 +140,13 @@ pub fn write_xlsx(
             .expect("sheet metadata and column metadata must agree")
         {
             checkpoint(cancel)?;
-            if !col_info.width.is_finite() || col_info.width < 0.0 || col_info.width > 255.0 {
-                return Err(WriteError::new(
-                    "internal",
-                    format!(
-                        "invalid width {} for column {} on sheet {:?}",
-                        col_info.width, col_info.c, meta.name
-                    ),
-                ));
+            let width = clamp_column_width(col_info.width);
+            if !col_info.width.is_finite() || width != col_info.width {
+                dropped.add(CLAMPED_COLUMN_WIDTHS_DROPPED);
             }
             let column = xlsx_column(col_info.c)?;
             worksheet
-                .set_column_width(column, col_info.width)
+                .set_column_width(column, width)
                 .map_err(|error| xlsx_error("set column width", out, error))?;
         }
 
@@ -148,16 +158,17 @@ pub fn write_xlsx(
             .expect("sheet metadata and merge metadata must agree")
         {
             checkpoint(cancel)?;
-            let (first_row, first_col, last_row, last_col) =
-                parse_a1_range(&range).ok_or_else(|| {
-                    WriteError::new(
-                        "internal",
-                        format!("invalid merge range {range:?} on sheet {:?}", meta.name),
-                    )
-                })?;
-            worksheet
-                .merge_range(first_row, first_col, last_row, last_col, "", &merge_format)
-                .map_err(|error| xlsx_error("write merge range", out, error))?;
+            let Some((first_row, first_col, last_row, last_col)) = parse_a1_range(&range) else {
+                dropped.add(UNREPRESENTABLE_MERGES_DROPPED);
+                continue;
+            };
+            if (first_row, first_col) == (last_row, last_col)
+                || worksheet
+                    .merge_range(first_row, first_col, last_row, last_col, "", &merge_format)
+                    .is_err()
+            {
+                dropped.add(UNREPRESENTABLE_MERGES_DROPPED);
+            }
         }
 
         let mut last_row = None;
@@ -861,6 +872,15 @@ fn formula_result(cell: &WindowCell, row: u32, column: u16) -> Result<Option<Str
 }
 
 fn parse_datetime(value: &str, row: u32, column: u16) -> Result<ExcelDateTime, WriteError> {
+    if has_timezone_offset(value) {
+        return Err(WriteError::new(
+            "internal",
+            format!(
+                "timezone offsets are unsupported in ISO-8601 date {value:?} at {}",
+                cell_reference(row, column)
+            ),
+        ));
+    }
     ExcelDateTime::parse_from_str(value).map_err(|error| {
         WriteError::new(
             "internal",
@@ -870,6 +890,13 @@ fn parse_datetime(value: &str, row: u32, column: u16) -> Result<ExcelDateTime, W
             ),
         )
     })
+}
+
+fn has_timezone_offset(value: &str) -> bool {
+    let time = value
+        .find(['T', ' '])
+        .map_or(value, |separator| &value[separator + 1..]);
+    time.contains(':') && time.contains(['+', '-'])
 }
 
 fn default_date_format(value: Option<&CellValue>) -> &'static str {
@@ -914,6 +941,50 @@ fn cell_reference(row: u32, column: u16) -> String {
         letters.into_iter().collect::<String>(),
         row.saturating_add(1)
     )
+}
+
+fn unique_xlsx_sheet_name(original: &str, used: &mut HashSet<String>) -> String {
+    let mut characters = original
+        .chars()
+        .map(|character| {
+            if matches!(character, '[' | ']' | ':' | '*' | '?' | '/' | '\\') {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect::<Vec<_>>();
+    if characters.first() == Some(&'\'') {
+        characters[0] = '_';
+    }
+    if characters.last() == Some(&'\'') {
+        let last = characters.len() - 1;
+        characters[last] = '_';
+    }
+
+    let mut base = characters.into_iter().take(31).collect::<String>();
+    if base.is_empty() {
+        base = "Sheet".to_owned();
+    }
+
+    let mut candidate = base.clone();
+    let mut ordinal = 2_u32;
+    while used.contains(&candidate.to_lowercase()) {
+        let suffix = format!(" ({ordinal})");
+        let prefix_len = 31_usize.saturating_sub(suffix.chars().count());
+        candidate = base.chars().take(prefix_len).collect::<String>() + &suffix;
+        ordinal = ordinal.saturating_add(1);
+    }
+    used.insert(candidate.to_lowercase());
+    candidate
+}
+
+fn clamp_column_width(width: f64) -> f64 {
+    if width.is_nan() {
+        0.0
+    } else {
+        width.clamp(0.0, 255.0)
+    }
 }
 
 fn parse_a1_range(range: &str) -> Option<(u32, u16, u32, u16)> {
@@ -1041,21 +1112,56 @@ fn checkpoint(cancel: &AtomicBool) -> Result<(), WriteError> {
 }
 
 fn temporary_output(out: &Path, suffix: &str) -> Result<NamedTempFile, WriteError> {
-    let parent = out
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
     TempFileBuilder::new()
         .prefix(".wax-export-")
         .suffix(suffix)
-        .tempfile_in(parent)
+        .tempfile_in(output_parent(out))
         .map_err(|error| io_error("create temporary output", out, error))
 }
 
+fn output_parent(out: &Path) -> &Path {
+    out.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
 fn persist_output(temp: NamedTempFile, out: &Path) -> Result<(), WriteError> {
-    temp.persist(out)
-        .map(|_| ())
-        .map_err(|error| io_error("replace output", out, error.error))
+    #[cfg(unix)]
+    let create_permissions = file_create_permissions(out)?;
+
+    let persisted = temp
+        .persist(out)
+        .map_err(|error| io_error("replace output", out, error.error))?;
+
+    #[cfg(unix)]
+    persisted
+        .set_permissions(create_permissions)
+        .map_err(|error| io_error("set output permissions", out, error))?;
+    #[cfg(not(unix))]
+    drop(persisted);
+
+    Ok(())
+}
+
+#[cfg(unix)]
+fn file_create_permissions(out: &Path) -> Result<std::fs::Permissions, WriteError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut builder = TempFileBuilder::new();
+    builder
+        .prefix(".wax-mode-")
+        .permissions(std::fs::Permissions::from_mode(0o666));
+    let probe = builder
+        .tempfile_in(output_parent(out))
+        .map_err(|error| io_error("determine output permissions", out, error))?;
+    let mode = probe
+        .as_file()
+        .metadata()
+        .map_err(|error| io_error("inspect output permissions", out, error))?
+        .permissions()
+        .mode()
+        & 0o777;
+    Ok(std::fs::Permissions::from_mode(mode))
 }
 
 fn io_error(action: &str, out: &Path, error: std::io::Error) -> WriteError {
@@ -1304,6 +1410,39 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_rejects_timezone_offsets_loudly_before_datetime_parsing() {
+        let store = store_with(
+            vec![sheet(
+                "Dates",
+                3,
+                4,
+                vec![cell(
+                    2,
+                    3,
+                    CellType::D,
+                    Some(CellValue::Text("2026-07-28T13:45:09+02:00".to_owned())),
+                    None,
+                    None,
+                    None,
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("offset.xlsx");
+
+        let error = write_xlsx(&store, &out, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(error.code, "internal");
+        assert!(error.msg.contains("timezone offsets are unsupported"));
+        assert!(error.msg.contains("D3"));
+        assert!(!out.exists());
+        assert!(!has_timezone_offset("2026-07-28T13:45:09Z"));
+        assert!(parse_datetime("2026-07-28T13:45:09Z", 0, 0).is_ok());
+    }
+
+    #[test]
     fn xlsx_formulas_keep_text_and_typed_cached_results() {
         let expected = [
             (CellType::N, Some(CellValue::Number(3.5)), "1+2.5"),
@@ -1467,6 +1606,73 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_skips_single_overlapping_and_unparseable_merge_ranges_loudly() {
+        let store = store_with(
+            vec![sheet(
+                "Merges",
+                3,
+                4,
+                Vec::new(),
+                &["A1:B2", "B2:C3", "D1", "XFE1:XFE2"],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("unrepresentable-merges.xlsx");
+
+        let outcome = write_xlsx(&store, &out, &AtomicBool::new(false))
+            .expect("unrepresentable merges should not fail the export");
+        assert_eq!(outcome.dropped, [UNREPRESENTABLE_MERGES_DROPPED]);
+        assert_eq!(read_xlsx(&out).sheets[0].merges, ["A1:B2"]);
+    }
+
+    #[test]
+    fn xlsx_sanitizes_sheet_names_and_keeps_them_unique() {
+        let long_a = "abcdefghijklmnopqrstuvwxyz12345-A";
+        let long_b = "abcdefghijklmnopqrstuvwxyz12345-B";
+        let original_names = ["Normal", "bad[]:*?/\\name", long_a, long_b];
+        let store = store_with(
+            original_names
+                .iter()
+                .map(|name| sheet(name, 0, 0, Vec::new(), &[]))
+                .collect(),
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("sheet-names.xlsx");
+
+        let outcome = write_xlsx(&store, &out, &AtomicBool::new(false))
+            .expect("invalid source sheet names should be sanitized");
+        let actual = read_xlsx(&out);
+        let actual_names = actual
+            .sheets
+            .iter()
+            .map(|sheet| sheet.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(actual_names[0], "Normal");
+        assert_eq!(actual_names[1], "bad_______name");
+        assert_eq!(actual_names[2], "abcdefghijklmnopqrstuvwxyz12345");
+        assert!(actual_names[3].ends_with(" (2)"));
+        assert!(actual_names.iter().all(|name| name.chars().count() <= 31));
+        assert_eq!(
+            actual_names
+                .iter()
+                .map(|name| name.to_lowercase())
+                .collect::<HashSet<_>>()
+                .len(),
+            original_names.len()
+        );
+        assert_eq!(outcome.dropped.len(), 3);
+        for original in &original_names[1..] {
+            assert!(
+                outcome.dropped.iter().any(|entry| entry.contains(original)),
+                "missing dropped entry naming {original:?}: {:?}",
+                outcome.dropped
+            );
+        }
+    }
+
+    #[test]
     fn xlsx_writes_explicit_column_widths() {
         let mut model = sheet("Widths", 0, 3, Vec::new(), &[]);
         model.col_infos = vec![ColInfo { c: 0, width: 8.5 }, ColInfo { c: 2, width: 24.25 }];
@@ -1479,6 +1685,25 @@ mod tests {
         assert!(worksheet.contains(r#"<col min="1" max="1" width=""#));
         assert!(worksheet.contains(r#"<col min="3" max="3" width=""#));
         assert_eq!(worksheet.matches(r#"customWidth="1""#).count(), 2);
+    }
+
+    #[test]
+    fn xlsx_clamps_out_of_range_column_widths_loudly() {
+        let mut model = sheet("Widths", 0, 2, Vec::new(), &[]);
+        model.col_infos = vec![
+            ColInfo { c: 0, width: -12.0 },
+            ColInfo { c: 1, width: 300.0 },
+        ];
+        let store = store_with(vec![model], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("clamped-widths.xlsx");
+
+        let outcome = write_xlsx(&store, &out, &AtomicBool::new(false))
+            .expect("out-of-range widths should be clamped");
+        assert_eq!(outcome.dropped, [CLAMPED_COLUMN_WIDTHS_DROPPED]);
+        assert_eq!(clamp_column_width(-12.0), 0.0);
+        assert_eq!(clamp_column_width(300.0), 255.0);
+        assert!(out.is_file());
     }
 
     #[test]
@@ -1544,6 +1769,47 @@ mod tests {
         );
         assert!(!xlsx.exists());
         assert!(!csv.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn persisted_outputs_use_file_create_mode_for_new_and_replaced_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let store = store_with(vec![sheet("Sheet1", 0, 0, Vec::new(), &[])], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let mode_probe = temp.path().join("file-create-mode");
+        drop(File::create(&mode_probe).expect("mode probe should be created"));
+        let expected_mode = mode_probe
+            .metadata()
+            .expect("mode probe metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        let xlsx = temp.path().join("new.xlsx");
+        write_xlsx(&store, &xlsx, &AtomicBool::new(false)).expect("xlsx should write");
+
+        let csv = temp.path().join("replaced.csv");
+        std::fs::write(&csv, b"existing").expect("existing output should be created");
+        std::fs::set_permissions(&csv, std::fs::Permissions::from_mode(0o600))
+            .expect("existing mode should be restricted");
+        write_csv(&store, 0, &csv, &AtomicBool::new(false)).expect("CSV should replace");
+
+        for output in [&xlsx, &csv] {
+            let actual_mode = output
+                .metadata()
+                .expect("output metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(
+                actual_mode,
+                expected_mode,
+                "{} should use File::create mode",
+                output.display()
+            );
+        }
     }
 
     #[test]
@@ -1766,6 +2032,17 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_rejects_an_empty_workbook_without_creating_output() {
+        let store = WorkbookStore::default();
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("empty.xlsx");
+
+        let error = write_xlsx(&store, &out, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(error, WriteError::new("bad_request", "empty workbook"));
+        assert!(!out.exists());
+    }
+
+    #[test]
     fn committed_xlsx_fixture_round_trips_all_normalized_cells() {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let fixtures = [repository.join("crates/wax-read/tests/fixtures/reader.xlsx")];
@@ -1780,8 +2057,22 @@ mod tests {
     #[test]
     #[ignore = "requires the machine-local, gitignored corpus payload overlay"]
     fn five_local_corpus_fixtures_round_trip_all_normalized_cells() {
-        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-        let corpus = repository.join("corpus/files/poi/test-data/spreadsheet");
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let corpus_candidates = [manifest.join("../.."), manifest.join("../../../..")]
+            .map(|repository| repository.join("corpus/files/poi/test-data/spreadsheet"));
+        let corpus = corpus_candidates
+            .iter()
+            .find(|candidate| candidate.is_dir())
+            .unwrap_or_else(|| {
+                panic!(
+                    "machine-local corpus overlay is missing; tried: {}",
+                    corpus_candidates
+                        .iter()
+                        .map(|candidate| candidate.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            });
         let fixtures = [
             corpus.join("Booleans.xlsx"),
             corpus.join("53282b.xlsx"),
