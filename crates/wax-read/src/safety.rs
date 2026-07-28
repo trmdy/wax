@@ -204,6 +204,58 @@ fn preflight_legacy_cfb(
         }
     }
 
+    // calamine walks the DIFAT chain with an acknowledged unbounded loop
+    // (`sector_id = difat.pop()` under a `//TODO: check if in infinite loop`
+    // in its cfb.rs), extending a Vec by one sector per hop. A cyclic chain
+    // therefore grows without bound: a 5,640-byte fuzz artifact reached a
+    // 128 GiB allocation and 87 GiB RSS before wax's wall-clock timeout
+    // fired. Walk the same chain first, bounded by the sector count that
+    // physically fits, and reject cycles.
+    let difat_start = u32::from_le_bytes(header[68..72].try_into().expect("header is 512 bytes"));
+    let mut sector_id = difat_start;
+    let mut hops = 0_u64;
+    while sector_id < 0xFFFF_FFFA {
+        hops += 1;
+        if hops > total_sectors {
+            return Err(SafetyError::new(
+                ErrorCode::BadZip,
+                format!(
+                    "XLS compound-document DIFAT chain exceeds {total_sectors} sectors (cyclic or corrupt)"
+                ),
+            ));
+        }
+        let sector_start = (u64::from(sector_id) + 1)
+            .checked_mul(sector_bytes)
+            .ok_or_else(|| {
+                SafetyError::new(ErrorCode::BadZip, "XLS DIFAT sector offset overflowed")
+            })?;
+        let next_offset = sector_start
+            .checked_add(sector_bytes - 4)
+            .filter(|end| end + 4 <= input_bytes)
+            .ok_or_else(|| {
+                SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("XLS DIFAT chain leaves the {input_bytes} byte container"),
+                )
+            })?;
+        input
+            .seek(std::io::SeekFrom::Start(next_offset))
+            .map_err(|error| {
+                SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("could not seek the XLS DIFAT chain: {error}"),
+                )
+            })?;
+        let mut next = [0_u8; 4];
+        input.read_exact(&mut next).map_err(|error| {
+            SafetyError::new(
+                ErrorCode::BadZip,
+                format!("could not read the XLS DIFAT chain: {error}"),
+            )
+        })?;
+        sector_id = u32::from_le_bytes(next);
+    }
+
     preflight_biff_records(path, input_bytes, options)
 }
 
@@ -429,26 +481,30 @@ fn check_declared_extent(data: &[u8], max_cells: u64) -> Result<(), SafetyError>
         }
     };
 
-    if first_col > 0xff || last_col < first_col {
+    // Mirror calamine's `parse_dimensions` exactly (xls.rs): the record
+    // stores exclusive last row/column, calamine converts to inclusive with
+    // `- 1`, and the call site then reserves `(end - start + 1)` cells. Those
+    // u32 subtractions wrap in release builds, so a reversed pair must be
+    // rejected here — including when a bound is 0, the gap that let a 137 GB
+    // reserve through (fuzz artifact oom-bc197d861c...).
+    if 0xff < first_col || last_col < first_col {
         first_col = 0;
     }
+    // Reproduce calamine's arithmetic bit for bit, wrapping included: it
+    // converts the record's exclusive bounds with `- 1`, then reserves
+    // `(end - start + 1)` rows by cols with a `saturating_mul`. Reversed
+    // bounds wrap to ~2^32, which is only harmless when the other dimension
+    // is 0 (the product saturates to 0 and calamine reserves nothing) — so
+    // judge the product, not the operands, or legitimate files are rejected.
     let (rows, cols) = if last_row >= 1 && last_col >= 1 {
-        let rows = last_row.checked_sub(first_row).ok_or_else(|| {
-            SafetyError::new(ErrorCode::BadZip, "BIFF DIMENSIONS row bounds are reversed")
-        })?;
-        let cols = last_col.checked_sub(first_col).ok_or_else(|| {
-            SafetyError::new(
-                ErrorCode::BadZip,
-                "BIFF DIMENSIONS column bounds are reversed",
-            )
-        })?;
-        (rows, cols)
+        (
+            u64::from((last_row - 1).wrapping_sub(first_row).wrapping_add(1)),
+            u64::from((last_col - 1).wrapping_sub(first_col).wrapping_add(1)),
+        )
     } else {
         (1, 1)
     };
-    let cells = u64::from(rows)
-        .checked_mul(u64::from(cols))
-        .ok_or_else(|| SafetyError::new(ErrorCode::Bomb, "declared XLS extent overflowed"))?;
+    let cells = rows.saturating_mul(cols);
     if cells > max_cells {
         return Err(SafetyError::new(
             ErrorCode::Bomb,

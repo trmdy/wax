@@ -11,15 +11,20 @@ readonly ORACLE_DIR="harness/oracle"
 
 fast=false
 fuzz_only=false
+fuzz_burn=false
 
 usage() {
-  printf 'Usage: %s [--fast] [--fuzz-only]\n' "${0##*/}" >&2
+  printf 'Usage: %s [--fast] [--fuzz-only] [--fuzz-burn]\n' "${0##*/}" >&2
 }
 
 while (($# > 0)); do
   case "$1" in
     --fast)
       fast=true
+      ;;
+    --fuzz-burn)
+      fuzz_burn=true
+      fuzz_only=true
       ;;
     --fuzz-only)
       fuzz_only=true
@@ -81,6 +86,11 @@ check_layout() {
   fi
 }
 
+# Deterministic regression replay: every seed and every artifact ever
+# recovered from a burn must still be handled cleanly. This is a *gate*, so
+# it must not depend on what a random mutation happens to discover — timed
+# discovery burns live in `--fuzz-burn` (and the nightly CI job), where a new
+# finding is a task, not a broken build.
 smoke_fuzz_target() {
   local nightly_toolchain="$1"
   local target="$2"
@@ -89,8 +99,25 @@ smoke_fuzz_target() {
 
   corpus_dir="$(mktemp -d "${TMPDIR:-/tmp}/wax-fuzz-${target}.XXXXXX")"
   cp -R "fuzz/corpus/${target}/." "$corpus_dir/"
+  if [[ -d "fuzz/artifacts/${target}" ]]; then
+    find "fuzz/artifacts/${target}" -type f -exec cp {} "$corpus_dir/" \;
+  fi
   rustup run "$nightly_toolchain" cargo fuzz run "$target" "$corpus_dir" -- \
-    -max_total_time=30 -print_final_stats=1 -verbosity=0 || status=$?
+    -runs=0 -print_final_stats=1 -verbosity=0 || status=$?
+  rm -rf -- "$corpus_dir"
+  return "$status"
+}
+
+burn_fuzz_target() {
+  local nightly_toolchain="$1"
+  local target="$2"
+  local corpus_dir
+  local status=0
+
+  corpus_dir="$(mktemp -d "${TMPDIR:-/tmp}/wax-fuzz-${target}.XXXXXX")"
+  cp -R "fuzz/corpus/${target}/." "$corpus_dir/"
+  rustup run "$nightly_toolchain" cargo fuzz run "$target" "$corpus_dir" -- \
+    -max_total_time="${WAX_FUZZ_BURN_SECONDS:-300}" -print_final_stats=1 -verbosity=0 || status=$?
   rm -rf -- "$corpus_dir"
   return "$status"
 }
@@ -119,8 +146,13 @@ run_fuzz_checks() {
   run_step "fuzz: cargo fuzz build" \
     rustup run "$nightly_toolchain" cargo fuzz build
   for target in container_preflight xlsx_reader legacy_xls_reader; do
-    run_step "fuzz: ${target} 30 second smoke" \
-      smoke_fuzz_target "$nightly_toolchain" "$target"
+    if [[ "$fuzz_burn" == true ]]; then
+      run_step "fuzz: ${target} ${WAX_FUZZ_BURN_SECONDS:-300} second burn" \
+        burn_fuzz_target "$nightly_toolchain" "$target"
+    else
+      run_step "fuzz: ${target} seed + artifact replay" \
+        smoke_fuzz_target "$nightly_toolchain" "$target"
+    fi
   done
 }
 
