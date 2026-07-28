@@ -21,7 +21,11 @@ if [ "$command" = "export" ]; then
   fi
   printf '%s\n' "match" >"$output"
   bytes=$(wc -c <"$output" | tr -d ' ')
-  printf '%s\n' "{\"ok\":true,\"bytes\":$bytes,\"dropped\":[]}"
+  dropped='[]'
+  if [ "${WAX_FAKE_EXPORT_DROPPED:-}" = "1" ]; then
+    dropped='["cell A1 string truncated from 32768 to 32767 characters"]'
+  fi
+  printf '%s\n' "{\"ok\":true,\"bytes\":$bytes,\"dropped\":$dropped}"
   exit 0
 fi
 

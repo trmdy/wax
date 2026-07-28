@@ -100,6 +100,7 @@ pub struct Cell {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ColInfo {
     pub c: u32,
     pub width: f64,
@@ -449,6 +450,20 @@ mod tests {
         assert!(document.styles[0].bold);
         assert_eq!(document.sheets[0].col_infos[0].width, 17.25);
         assert_eq!(document.sheets[0].cells[0].s, Some(0));
+    }
+
+    #[test]
+    fn column_widths_reject_unknown_fields() {
+        let mut value = valid_dump();
+        value["sheets"][0]["colInfos"] = json!([{
+            "c": 0,
+            "width": 17.25,
+            "unexpected": true
+        }]);
+
+        let error = parse(&value).unwrap_err();
+
+        assert!(error.to_string().contains("unknown field `unexpected`"));
     }
 
     #[test]

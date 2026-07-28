@@ -60,6 +60,8 @@ pub struct RoundTripFileMetrics {
     pub value_match: CountMetric,
     pub display_match: CountMetric,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub export_dropped: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub merge_defects: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub structure_defects: Vec<String>,
@@ -166,7 +168,7 @@ struct ExportResponse {
 }
 
 enum ExportResult {
-    Exported,
+    Exported { dropped: Vec<String> },
     Unavailable(RoundTripFailure),
     Failed(RoundTripFailure),
 }
@@ -382,8 +384,8 @@ pub fn run_round_trip(
         }
     };
     let exported = temporary.path().join("round-trip.xlsx");
-    match export_xlsx(&config, &exported) {
-        ExportResult::Exported => {}
+    let export_dropped = match export_xlsx(&config, &exported) {
+        ExportResult::Exported { dropped } => dropped,
         ExportResult::Unavailable(error) => {
             return RoundTripFileMetrics {
                 status: "xlsxExportUnavailable".to_owned(),
@@ -398,7 +400,7 @@ pub fn run_round_trip(
                 ..RoundTripFileMetrics::default()
             };
         }
-    }
+    };
 
     let oracle = invoke_dump(
         Tool::Sheetjs,
@@ -460,6 +462,7 @@ pub fn run_round_trip(
         Ok(target) if target.ok => target,
         Ok(target) => {
             let mut result = failed_with(document_failure("waxReadBack", &target));
+            result.export_dropped = export_dropped;
             result.oracle_open = oracle_open;
             result.oracle_error = oracle_error;
             result.soffice_open = soffice_open;
@@ -468,6 +471,7 @@ pub fn run_round_trip(
         }
         Err(error) => {
             let mut result = failed_with(error);
+            result.export_dropped = export_dropped;
             result.oracle_open = oracle_open;
             result.oracle_error = oracle_error;
             result.soffice_open = soffice_open;
@@ -485,6 +489,7 @@ pub fn run_round_trip(
         },
         value_match: comparison.value_match,
         display_match: comparison.display_match,
+        export_dropped,
         merge_defects: comparison.merge_defects,
         structure_defects: comparison.structure_defects,
         oracle_open,
@@ -548,7 +553,6 @@ fn export_xlsx(config: &RoundTripFileConfig<'_>, output: &Path) -> ExportResult 
             ));
         }
     };
-    let _ = response.dropped;
     if !response.ok {
         let code = response.code.unwrap_or_else(|| "internal".to_owned());
         let error = RoundTripFailure::new(
@@ -558,11 +562,7 @@ fn export_xlsx(config: &RoundTripFileConfig<'_>, output: &Path) -> ExportResult 
                 .msg
                 .unwrap_or_else(|| "xlsx export failed without a message".to_owned()),
         );
-        return if code == "internal" {
-            ExportResult::Unavailable(error)
-        } else {
-            ExportResult::Failed(error)
-        };
+        return ExportResult::Failed(error);
     }
     if response.bytes.is_none() {
         return ExportResult::Failed(RoundTripFailure::new(
@@ -572,7 +572,9 @@ fn export_xlsx(config: &RoundTripFileConfig<'_>, output: &Path) -> ExportResult 
         ));
     }
     match fs::metadata(output) {
-        Ok(metadata) if metadata.is_file() && metadata.len() > 0 => ExportResult::Exported,
+        Ok(metadata) if metadata.is_file() && metadata.len() > 0 => ExportResult::Exported {
+            dropped: response.dropped,
+        },
         Ok(_) => ExportResult::Failed(RoundTripFailure::new(
             "export",
             "empty_output",

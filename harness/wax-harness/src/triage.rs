@@ -56,6 +56,8 @@ pub fn render_triage(results: &[FileMetrics], generated_at: &str) -> String {
         display_mismatches,
     );
     render_round_trip_merge_defects(&mut output, results);
+    render_round_trip_export_drops(&mut output, results);
+    render_round_trip_failures(&mut output, results);
     render_oracle_read_back_defects(&mut output, results);
     output
 }
@@ -175,6 +177,116 @@ fn render_oracle_read_back_defects(output: &mut String, results: &[FileMetrics])
             "| {} | {} |",
             inline_code(&result.path),
             inline_code(&error)
+        )
+        .unwrap();
+    }
+}
+
+fn render_round_trip_export_drops(output: &mut String, results: &[FileMetrics]) {
+    writeln!(output, "\n## Round-trip export drops\n").unwrap();
+    let private_count = results
+        .iter()
+        .filter(|result| {
+            result.private
+                && result
+                    .round_trip
+                    .as_ref()
+                    .is_some_and(|round_trip| !round_trip.export_dropped.is_empty())
+        })
+        .count();
+    let public: Vec<_> = results
+        .iter()
+        .filter(|result| {
+            !result.private
+                && result
+                    .round_trip
+                    .as_ref()
+                    .is_some_and(|round_trip| !round_trip.export_dropped.is_empty())
+        })
+        .collect();
+    if public.is_empty() && private_count == 0 {
+        writeln!(output, "No disagreements observed.").unwrap();
+        return;
+    }
+    if private_count != 0 {
+        writeln!(
+            output,
+            "{private_count} private file(s) had export drops; paths are omitted.\n"
+        )
+        .unwrap();
+    }
+    if public.is_empty() {
+        return;
+    }
+    writeln!(output, "| File | Dropped during export |").unwrap();
+    writeln!(output, "| --- | --- |").unwrap();
+    for result in public {
+        let round_trip = result
+            .round_trip
+            .as_ref()
+            .expect("filtered result must have round-trip metrics");
+        for dropped in &round_trip.export_dropped {
+            writeln!(
+                output,
+                "| {} | {} |",
+                inline_code(&result.path),
+                inline_code(dropped)
+            )
+            .unwrap();
+        }
+    }
+}
+
+fn render_round_trip_failures(output: &mut String, results: &[FileMetrics]) {
+    writeln!(output, "\n## Round-trip failures\n").unwrap();
+    let private_count = results
+        .iter()
+        .filter(|result| {
+            result.private
+                && result
+                    .round_trip
+                    .as_ref()
+                    .is_some_and(|round_trip| round_trip.error.is_some())
+        })
+        .count();
+    let public: Vec<_> = results
+        .iter()
+        .filter(|result| {
+            !result.private
+                && result
+                    .round_trip
+                    .as_ref()
+                    .is_some_and(|round_trip| round_trip.error.is_some())
+        })
+        .collect();
+    if public.is_empty() && private_count == 0 {
+        writeln!(output, "No disagreements observed.").unwrap();
+        return;
+    }
+    if private_count != 0 {
+        writeln!(
+            output,
+            "{private_count} private file(s) had round-trip failures; paths are omitted.\n"
+        )
+        .unwrap();
+    }
+    if public.is_empty() {
+        return;
+    }
+    writeln!(output, "| File | Failure |").unwrap();
+    writeln!(output, "| --- | --- |").unwrap();
+    for result in public {
+        let failure = result
+            .round_trip
+            .as_ref()
+            .and_then(|round_trip| round_trip.error.as_ref())
+            .expect("filtered result must have a round-trip failure");
+        let detail = format!("{}: {}: {}", failure.stage, failure.code, failure.msg);
+        writeln!(
+            output,
+            "| {} | {} |",
+            inline_code(&result.path),
+            inline_code(&detail)
         )
         .unwrap();
     }
@@ -334,7 +446,7 @@ mod tests {
     fn empty_triage_reports_each_category_as_clear() {
         let markdown = render_triage(&[], "2026-07-28T00:00:00Z");
 
-        assert_eq!(markdown.matches("No disagreements observed.").count(), 5);
+        assert_eq!(markdown.matches("No disagreements observed.").count(), 7);
     }
 
     #[test]
@@ -357,5 +469,34 @@ mod tests {
             .contains("1 private file(s) had oracle read-back failures; paths are omitted."));
         assert!(!markdown.contains("secret-ledger"));
         assert!(!markdown.contains("private details"));
+    }
+
+    #[test]
+    fn round_trip_triage_surfaces_export_drops_and_internal_failures() {
+        let mut dropped = file("public/truncated.xls", false);
+        dropped.round_trip = Some(RoundTripFileMetrics {
+            status: "defect".to_owned(),
+            export_dropped: vec![
+                "cell A1 string truncated from 32768 to 32767 characters".to_owned()
+            ],
+            ..RoundTripFileMetrics::default()
+        });
+        let mut failed = file("public/regression.xls", false);
+        failed.round_trip = Some(RoundTripFileMetrics {
+            status: "failed".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "internal".to_owned(),
+                msg: "live writer regression".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+
+        let markdown = render_triage(&[dropped, failed], "2026-07-28T00:00:00Z");
+
+        assert!(markdown.contains("## Round-trip export drops"));
+        assert!(markdown.contains("cell A1 string truncated from 32768 to 32767 characters"));
+        assert!(markdown.contains("## Round-trip failures"));
+        assert!(markdown.contains("export: internal: live writer regression"));
     }
 }
