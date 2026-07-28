@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T02:13:21Z",
+  "generatedAt": "2026-07-28T02:48:49Z",
   "filesAttempted": 2048,
   "filesSkipped": 0,
   "metrics": {
@@ -33,6 +33,11 @@
         "percent": 99.98627960790472
       }
     },
+    "displayStringMatch": {
+      "matched": 0,
+      "total": 0,
+      "percent": null
+    },
     "formulaFidelity": {
       "matched": 0,
       "total": 72609,
@@ -49,23 +54,125 @@
         "p95": 0
       },
       "sheetjs": {
-        "p50": 7,
-        "p95": 32
+        "p50": 8,
+        "p95": 88
       }
     },
     "peakRssBytes": {
       "wax": {
         "p50": 1769472,
-        "max": 66174976
+        "max": 66158592
       },
       "sheetjs": {
-        "p50": 93159424,
-        "max": 1274478592
+        "p50": 93306880,
+        "max": 1246937088
       }
     },
     "windowLatencyMs": {
       "wax": null,
       "sheetjs": null
+    },
+    "perExtension": {
+      "ods": {
+        "filesAttempted": 37,
+        "filesOpened": {
+          "wax": {
+            "matched": 0,
+            "total": 37,
+            "percent": 0.0
+          },
+          "sheetjs": {
+            "matched": 34,
+            "total": 37,
+            "percent": 91.89189189189189
+          }
+        },
+        "cellValueMatch": {
+          "matched": 0,
+          "total": 0,
+          "percent": null
+        }
+      },
+      "xls": {
+        "filesAttempted": 885,
+        "filesOpened": {
+          "wax": {
+            "matched": 0,
+            "total": 885,
+            "percent": 0.0
+          },
+          "sheetjs": {
+            "matched": 858,
+            "total": 885,
+            "percent": 96.94915254237289
+          }
+        },
+        "cellValueMatch": {
+          "matched": 0,
+          "total": 0,
+          "percent": null
+        }
+      },
+      "xlsb": {
+        "filesAttempted": 456,
+        "filesOpened": {
+          "wax": {
+            "matched": 0,
+            "total": 456,
+            "percent": 0.0
+          },
+          "sheetjs": {
+            "matched": 453,
+            "total": 456,
+            "percent": 99.34210526315789
+          }
+        },
+        "cellValueMatch": {
+          "matched": 0,
+          "total": 0,
+          "percent": null
+        }
+      },
+      "xlsm": {
+        "filesAttempted": 32,
+        "filesOpened": {
+          "wax": {
+            "matched": 0,
+            "total": 32,
+            "percent": 0.0
+          },
+          "sheetjs": {
+            "matched": 32,
+            "total": 32,
+            "percent": 100.0
+          }
+        },
+        "cellValueMatch": {
+          "matched": 0,
+          "total": 0,
+          "percent": null
+        }
+      },
+      "xlsx": {
+        "filesAttempted": 638,
+        "filesOpened": {
+          "wax": {
+            "matched": 597,
+            "total": 638,
+            "percent": 93.57366771159874
+          },
+          "sheetjs": {
+            "matched": 613,
+            "total": 638,
+            "percent": 96.08150470219435
+          }
+        },
+        "cellValueMatch": {
+          "matched": 448091,
+          "total": 693364,
+          "percent": 64.62565117312118
+        }
+      }
     }
   }
 }
