@@ -6,8 +6,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use calamine::{
-    expand_shared_formula, open_workbook, Data, Dimensions, Ods, Range, Reader as CalamineWorkbook,
-    SheetType, Xls, Xlsb, Xlsx, XlsxFormulaMetadata,
+    expand_shared_formula, open_workbook, Data, Dimensions, ExcelDateTime, ExcelDateTimeType, Ods,
+    Range, Reader as CalamineWorkbook, SheetType, Xls, Xlsb, Xlsx, XlsxFormulaMetadata,
 };
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader as XmlReader;
@@ -17,6 +17,11 @@ use wax_proto::ErrorCode;
 use zip::ZipArchive;
 
 use crate::{Reader, ReaderOptions};
+
+#[path = "xls_styles.rs"]
+mod xls_styles;
+#[path = "xlsb_styles.rs"]
+mod xlsb_styles;
 
 /// Workbook reader backed by calamine, with wax's normalization layered on top.
 #[derive(Clone, Copy, Debug, Default)]
@@ -212,6 +217,16 @@ fn read_xlsb(
         open_workbook(path).map_err(|error| container_error(WorkbookKind::Xlsb, error))?;
     let epoch_1904 = workbook.has_1904_epoch();
     let metadata = workbook.sheets_metadata().to_vec();
+    let mut warnings = Vec::new();
+    let supplement = match xlsb_styles::XlsbStyleSupplement::read(path) {
+        Ok(supplement) => supplement,
+        Err(message) => {
+            warnings.push(format!(
+                "xlsb number-format metadata could not be read; fmt values may be null: {message}"
+            ));
+            xlsb_styles::XlsbStyleSupplement::default()
+        }
+    };
     let mut emitted = 0_usize;
     let mut sheets = Vec::with_capacity(metadata.len());
 
@@ -236,8 +251,10 @@ fn read_xlsb(
                 if seen.is_multiple_of(4096) {
                     ensure_time_remaining(started, timeout)?;
                 }
-                records.entry(cell.get_position()).or_default().value =
-                    Data::from(cell.get_value().clone());
+                let position = cell.get_position();
+                let candidate = records.entry(position).or_default();
+                candidate.value = Data::from(cell.get_value().clone());
+                candidate.format = supplement.cell(&metadata.name, position).map(str::to_owned);
             }
         }
         {
@@ -257,6 +274,15 @@ fn read_xlsb(
                     normalize_formula(cell.get_value().clone());
             }
         }
+        if let Some(metadata) = supplement.cells(&metadata.name) {
+            for (&position, metadata) in metadata {
+                let candidate = records.entry(position).or_default();
+                candidate.format = metadata.format.clone();
+                if let Some(error) = metadata.cached_error.and_then(xlsb_error) {
+                    candidate.value = Data::Error(error);
+                }
+            }
+        }
 
         let candidates = normalize_candidates(records, epoch_1904);
         let (rows, cols) = extent_from_cells(&candidates);
@@ -274,10 +300,8 @@ fn read_xlsb(
         ));
     }
 
-    Ok((
-        sheets,
-        vec!["xlsb number-format codes and merged regions are best-effort".to_owned()],
-    ))
+    warnings.push("xlsb merged regions are best-effort".to_owned());
+    Ok((sheets, warnings))
 }
 
 fn read_xls(
@@ -290,6 +314,16 @@ fn read_xls(
         open_workbook(path).map_err(|error| container_error(WorkbookKind::Xls, error))?;
     let epoch_1904 = workbook.has_1904_epoch();
     let metadata = workbook.sheets_metadata().to_vec();
+    let mut warnings = Vec::new();
+    let supplement = match xls_styles::XlsStyleSupplement::read(path) {
+        Ok(supplement) => supplement,
+        Err(message) => {
+            warnings.push(format!(
+                "legacy xls number-format metadata could not be read; fmt values may be null: {message}"
+            ));
+            xls_styles::XlsStyleSupplement::default()
+        }
+    };
     let mut emitted = 0_usize;
     let mut sheets = Vec::with_capacity(metadata.len());
 
@@ -305,7 +339,10 @@ fn read_xls(
         let formulas = workbook
             .worksheet_formula(&metadata.name)
             .map_err(|error| container_error(WorkbookKind::Xls, error))?;
-        let (records, rows, cols) = range_records(&values, &formulas);
+        let (mut records, rows, cols) = range_records(&values, &formulas);
+        for (position, candidate) in &mut records {
+            candidate.format = supplement.cell(index, *position).map(str::to_owned);
+        }
         let merges = workbook
             .merge_cells_by_sheet_name(&metadata.name)
             .map_err(|error| container_error(WorkbookKind::Xls, error))?;
@@ -323,10 +360,7 @@ fn read_xls(
         ));
     }
 
-    Ok((
-        sheets,
-        vec!["legacy xls number-format codes are best-effort".to_owned()],
-    ))
+    Ok((sheets, warnings))
 }
 
 fn read_ods(
@@ -374,6 +408,7 @@ fn read_ods(
 struct Candidate {
     value: Data,
     formula: Option<String>,
+    format: Option<String>,
 }
 
 fn range_records(
@@ -417,7 +452,7 @@ fn normalize_candidates(records: BTreeMap<(u32, u32), Candidate>, epoch_1904: bo
                 position,
                 &candidate.value,
                 candidate.formula,
-                None,
+                candidate.format.as_deref(),
                 None,
                 epoch_1904,
             )
@@ -444,17 +479,22 @@ fn normalize_cell(
     let (cell_type, value, display) = match data {
         Data::Int(value) => {
             let raw = *value as f64;
+            let (cell_type, value) = normalize_number_value(raw, code, epoch_1904);
             (
-                CellType::N,
-                Some(CellValue::Number(raw)),
+                cell_type,
+                Some(value),
                 render(code, FmtValue::Number(raw), epoch_1904),
             )
         }
-        Data::Float(value) if value.is_finite() => (
-            CellType::N,
-            Some(CellValue::Number(*value)),
-            render(code, FmtValue::Number(*value), epoch_1904),
-        ),
+        Data::Float(value) if value.is_finite() => {
+            let raw = *value;
+            let (cell_type, value) = normalize_number_value(raw, code, epoch_1904);
+            (
+                cell_type,
+                Some(value),
+                render(code, FmtValue::Number(raw), epoch_1904),
+            )
+        }
         Data::Float(_) => (CellType::N, None, None),
         Data::String(value) => (
             CellType::S,
@@ -514,6 +554,65 @@ fn normalize_cell(
     })
 }
 
+fn normalize_number_value(raw: f64, code: &str, epoch_1904: bool) -> (CellType, CellValue) {
+    if number_format_kind(code) == NumberFormatKind::DateTime {
+        let value = ExcelDateTime::new(raw, ExcelDateTimeType::DateTime, epoch_1904);
+        (CellType::D, CellValue::Text(excel_datetime_iso(value)))
+    } else {
+        (CellType::N, CellValue::Number(raw))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NumberFormatKind {
+    Other,
+    DateTime,
+    Duration,
+}
+
+// Mirrors Excel's format-token rules conservatively. This supplements
+// calamine's type inference when the container parser did not connect a
+// custom XF to its format code; it never participates in display rendering.
+fn number_format_kind(code: &str) -> NumberFormatKind {
+    let mut escaped = false;
+    let mut quoted = false;
+    let mut brackets = 0_u8;
+    let mut previous = ' ';
+    let mut duration_token = false;
+    let mut am_pm = false;
+
+    for character in code.chars() {
+        match (character, escaped, quoted, am_pm, brackets) {
+            (_, true, ..) => escaped = false,
+            ('_' | '\\' | '*', ..) => escaped = true,
+            ('"', _, true, _, _) => quoted = false,
+            (_, _, true, _, _) => {}
+            ('"', _, _, _, _) => quoted = true,
+            (';', ..) => return NumberFormatKind::Other,
+            ('[', ..) => brackets = brackets.saturating_add(1),
+            (']', .., 1) if duration_token => return NumberFormatKind::Duration,
+            (']', ..) => brackets = brackets.saturating_sub(1),
+            ('a' | 'A', _, _, false, 0) => am_pm = true,
+            ('p' | 'm' | '/' | 'P' | 'M', _, _, true, 0) => {
+                return NumberFormatKind::DateTime;
+            }
+            ('d' | 'm' | 'h' | 'y' | 's' | 'D' | 'M' | 'H' | 'Y' | 'S', _, _, false, 0) => {
+                return NumberFormatKind::DateTime;
+            }
+            _ => {
+                if duration_token && character.eq_ignore_ascii_case(&previous) {
+                    // Repeated h/m/s inside brackets remains a duration token.
+                } else {
+                    duration_token =
+                        previous == '[' && matches!(character, 'm' | 'h' | 's' | 'M' | 'H' | 'S');
+                }
+            }
+        }
+        previous = character;
+    }
+    NumberFormatKind::Other
+}
+
 fn normalize_formula(formula: String) -> Option<String> {
     let formula = formula
         .strip_prefix("of:=")
@@ -553,6 +652,20 @@ fn error_text(error: &calamine::CellErrorType) -> &'static str {
         calamine::CellErrorType::Ref => "#REF!",
         calamine::CellErrorType::Value => "#VALUE!",
         calamine::CellErrorType::GettingData => "#GETTING_DATA",
+    }
+}
+
+fn xlsb_error(error: u8) -> Option<calamine::CellErrorType> {
+    match error {
+        0x00 => Some(calamine::CellErrorType::Null),
+        0x07 => Some(calamine::CellErrorType::Div0),
+        0x0F => Some(calamine::CellErrorType::Value),
+        0x17 => Some(calamine::CellErrorType::Ref),
+        0x1D => Some(calamine::CellErrorType::Name),
+        0x24 => Some(calamine::CellErrorType::Num),
+        0x2A => Some(calamine::CellErrorType::NA),
+        0x2B => Some(calamine::CellErrorType::GettingData),
+        _ => None,
     }
 }
 
@@ -1267,5 +1380,26 @@ mod tests {
         )
         .expect("formula cells remain present when their cache is invalid");
         assert_eq!(formula.v, None);
+    }
+
+    #[test]
+    fn supplemental_format_codes_classify_dates_but_not_durations() {
+        assert_eq!(number_format_kind("mm/dd/yyyy"), NumberFormatKind::DateTime);
+        assert_eq!(number_format_kind("h:mm AM/PM"), NumberFormatKind::DateTime);
+        assert_eq!(number_format_kind("[hh]:mm:ss"), NumberFormatKind::Duration);
+        assert_eq!(
+            number_format_kind(r#""M" #,##0.00"#),
+            NumberFormatKind::Other
+        );
+        assert_eq!(number_format_kind("#,##0"), NumberFormatKind::Other);
+
+        assert_eq!(
+            normalize_number_value(39_638.0, "mm/dd/yyyy", false),
+            (CellType::D, CellValue::Text("2008-07-09".to_owned()))
+        );
+        assert_eq!(
+            normalize_number_value(0.9, "[h]", false),
+            (CellType::N, CellValue::Number(0.9))
+        );
     }
 }
