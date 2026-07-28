@@ -190,7 +190,7 @@
       "branch": "agent/wax-w3d-harness",
       "worktree": ".worktrees/w3d",
       "bee": "wax-w3d",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "harness/wax-harness/**",
         "harness/run.sh"
