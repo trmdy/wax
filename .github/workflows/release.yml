@@ -1,0 +1,61 @@
+name: Release build skeleton
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            artifact: wax-macos-arm64
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact: wax-macos-x64
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            artifact: wax-linux-x64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain and target
+        shell: bash
+        run: |
+          if [[ -f rust-toolchain.toml ]]; then
+            rustup show active-toolchain
+          else
+            rustup toolchain install stable --profile minimal
+            rustup override set stable
+          fi
+          rustup target add "${{ matrix.target }}"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --locked --release --target "${{ matrix.target }}"
+
+      # TODO(W5): package each binary in a versioned per-platform tarball.
+      # TODO(W5): generate and publish SHA-256 checksums for every tarball.
+      - name: Upload unbundled binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/wax
+          if-no-files-found: error
