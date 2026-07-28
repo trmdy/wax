@@ -1,6 +1,9 @@
-name: Release build skeleton
+name: Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -10,8 +13,54 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  prepare:
+    name: Validate release metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        shell: bash
+        run: |
+          if [[ -f rust-toolchain.toml ]]; then
+            rustup show active-toolchain
+          else
+            rustup toolchain install stable --profile minimal
+            rustup override set stable
+          fi
+
+      - name: Resolve and validate release version
+        id: version
+        shell: bash
+        run: |
+          workspace_version="$(
+            cargo metadata --locked --no-deps --format-version 1 |
+              jq -er '.packages[] | select(.name == "wax-cli") | .version'
+          )"
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [[ "v${tag_version}" != "$GITHUB_REF_NAME" ]]; then
+              printf 'ERROR: release tag must have the form v<version>: %s\n' \
+                "$GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+            if [[ "$tag_version" != "$workspace_version" ]]; then
+              printf 'ERROR: tag version %s does not match workspace version %s\n' \
+                "$tag_version" "$workspace_version" >&2
+              exit 1
+            fi
+          fi
+
+          printf 'version=%s\n' "$workspace_version" >> "$GITHUB_OUTPUT"
+
   build:
-    name: Build ${{ matrix.artifact }}
+    name: Package ${{ matrix.platform }}
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -20,13 +69,13 @@ jobs:
         include:
           - runner: macos-15
             target: aarch64-apple-darwin
-            artifact: wax-macos-arm64
+            platform: macos-arm64
           - runner: macos-15-intel
             target: x86_64-apple-darwin
-            artifact: wax-macos-x64
+            platform: macos-x64
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            artifact: wax-linux-x64
+            platform: linux-x64
 
     steps:
       - name: Check out repository
@@ -49,13 +98,144 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --locked --release --target "${{ matrix.target }}"
+        run: >-
+          cargo build --locked --release
+          --package wax-cli
+          --bin wax
+          --target "${{ matrix.target }}"
 
-      # TODO(W5): package each binary in a versioned per-platform tarball.
-      # TODO(W5): generate and publish SHA-256 checksums for every tarball.
-      - name: Upload unbundled binary
+      - name: Check binary version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          binary="target/${TARGET}/release/wax"
+          binary_output="$("$binary" --version)"
+          if [[ ! "$binary_output" =~ ^wax[[:space:]]([^[:space:]]+)[[:space:]]\(proto[[:space:]]([0-9]+)\)$ ]]; then
+            printf 'ERROR: unexpected wax --version output: %s\n' \
+              "$binary_output" >&2
+            exit 1
+          fi
+          if [[ "${BASH_REMATCH[1]}" != "$VERSION" ]]; then
+            printf 'ERROR: binary version %s does not match workspace version %s\n' \
+              "${BASH_REMATCH[1]}" "$VERSION" >&2
+            exit 1
+          fi
+          printf 'Validated %s\n' "$binary_output"
+
+      - name: Package release archive
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p dist
+          (
+            cd dist
+            ../scripts/package.sh "../target/${TARGET}/release" \
+              "$VERSION" "$PLATFORM"
+          )
+
+      - name: Upload platform archive
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/release/wax
+          name: wax-v${{ needs.prepare.outputs.version }}-${{ matrix.platform }}
+          path: dist/wax-v${{ needs.prepare.outputs.version }}-${{ matrix.platform }}.tar.gz
           if-no-files-found: error
+          retention-days: 14
+
+  bundle:
+    name: Assemble release assets
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Download platform archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wax-v*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify archive set and write checksums
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          expected=(
+            "wax-v${VERSION}-macos-arm64.tar.gz"
+            "wax-v${VERSION}-macos-x64.tar.gz"
+            "wax-v${VERSION}-linux-x64.tar.gz"
+          )
+          actual="$(
+            find dist -maxdepth 1 -type f -name 'wax-v*.tar.gz' \
+              -exec basename {} \; | sort
+          )"
+          expected_sorted="$(printf '%s\n' "${expected[@]}" | sort)"
+          if [[ "$actual" != "$expected_sorted" ]]; then
+            printf 'ERROR: release archive set is incomplete or unexpected\n' >&2
+            printf 'Expected: %s\n' "${expected[*]}" >&2
+            printf 'Actual:\n%s\n' "$actual" >&2
+            exit 1
+          fi
+          (
+            cd dist
+            sha256sum "${expected[@]}" > SHA256SUMS.txt
+          )
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload dry-run release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-v${{ needs.prepare.outputs.version }}
+          path: |
+            dist/wax-v${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz
+            dist/wax-v${{ needs.prepare.outputs.version }}-macos-x64.tar.gz
+            dist/wax-v${{ needs.prepare.outputs.version }}-linux-x64.tar.gz
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub release
+    needs: bundle
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets-v${{ needs.bundle.outputs.version }}
+          path: release-assets
+
+      - name: Create or update GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.bundle.outputs.version }}
+        run: |
+          assets=(
+            "release-assets/wax-v${VERSION}-macos-arm64.tar.gz"
+            "release-assets/wax-v${VERSION}-macos-x64.tar.gz"
+            "release-assets/wax-v${VERSION}-linux-x64.tar.gz"
+            "release-assets/SHA256SUMS.txt"
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --verify-tag \
+              --generate-notes \
+              --title "$TAG"
+          fi
