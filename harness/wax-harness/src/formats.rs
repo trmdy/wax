@@ -212,6 +212,7 @@ mod tests {
             private: false,
             wax: summary.clone(),
             sheetjs: summary,
+            serve: None,
             cell_value_match: CountMetric::default(),
             wax_display_coverage: CoverageMetric::default(),
             sheetjs_display_coverage: CoverageMetric::default(),

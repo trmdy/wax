@@ -170,6 +170,7 @@ mod tests {
                 peak_rss_bytes: None,
                 truncated: false,
             },
+            serve: None,
             cell_value_match: CountMetric::default(),
             wax_display_coverage: CoverageMetric::default(),
             sheetjs_display_coverage: CoverageMetric::default(),

@@ -72,6 +72,19 @@
       "wax": null,
       "sheetjs": null
     },
+    "openViaServe": null,
+    "windowLatencyPercentilesMs": {
+      "p50": null,
+      "p95": null
+    },
+    "servePeakRssBytes": {
+      "p50": null,
+      "max": null
+    },
+    "serveStatus": {
+      "status": "unavailable",
+      "reason": "scoreboard predates wax serve integration"
+    },
     "perExtension": {
       "ods": {
         "filesAttempted": 37,

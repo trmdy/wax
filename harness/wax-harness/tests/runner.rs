@@ -92,6 +92,19 @@ fn runner_records_three_fixture_files_including_a_tool_crash() {
         1
     );
     assert_eq!(scoreboard["metrics"]["windowLatencyMs"]["wax"], Value::Null);
+    assert_eq!(scoreboard["metrics"]["openViaServe"], Value::Null);
+    assert_eq!(
+        scoreboard["metrics"]["serveStatus"]["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        scoreboard["metrics"]["perExtension"]["ods"]["formulaFidelity"]["matched"],
+        1
+    );
+    assert_eq!(
+        scoreboard["metrics"]["perExtension"]["xlsx"]["formulaFidelity"]["total"],
+        0
+    );
     let formats: Value = serde_json::from_slice(
         &fs::read(root.path().join("harness/format-coverage.json")).unwrap(),
     )
@@ -137,7 +150,8 @@ fn run_sh_is_an_end_to_end_entry_point_for_the_fake_contract_tools() {
         3
     );
     let markdown = fs::read_to_string(root.path().join("SCOREBOARD.md")).unwrap();
-    assert!(markdown.contains("| window latency | n/a | n/a |"));
+    assert!(markdown.contains("| window latency (p50 / p95) | n/a (serve unavailable) | n/a |"));
+    assert!(markdown.contains("| serve peak RSS (p50 / max) | n/a (serve unavailable) | n/a |"));
     assert!(markdown.contains("<code>xlsx</code> (W2 gate)"));
     assert!(markdown.contains("## Top format-code display compatibility"));
     assert!(root.path().join("harness/format-coverage.json").is_file());

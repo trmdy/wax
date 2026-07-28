@@ -32,6 +32,12 @@ pub fn render_markdown_with_formats(
     .unwrap();
     writeln!(
         output,
+        "| open-via-serve % | {} | n/a |",
+        serve_ratio(scoreboard, metrics.open_via_serve.as_ref())
+    )
+    .unwrap();
+    writeln!(
+        output,
         "| cell-value match % | {} | {} |",
         ratio(&metrics.cell_value_match),
         baseline(&metrics.cell_value_match)
@@ -92,7 +98,18 @@ pub fn render_markdown_with_formats(
         )
     )
     .unwrap();
-    writeln!(output, "| window latency | n/a | n/a |").unwrap();
+    writeln!(
+        output,
+        "| serve peak RSS (p50 / max) | {} | n/a |",
+        serve_rss(scoreboard)
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "| window latency (p50 / p95) | {} | n/a |",
+        serve_latency(scoreboard)
+    )
+    .unwrap();
     render_extensions(&mut output, scoreboard);
     if let Some(format_coverage) = format_coverage {
         render_formats(&mut output, format_coverage);
@@ -110,10 +127,10 @@ fn render_extensions(output: &mut String, scoreboard: &Scoreboard) {
 
     writeln!(
         output,
-        "| Extension | Files attempted | wax opened | SheetJS opened | Cell-value match |"
+        "| Extension | Files attempted | wax opened | SheetJS opened | Cell-value match | Formula-text fidelity | Cached-result fidelity |"
     )
     .unwrap();
-    writeln!(output, "| --- | ---: | ---: | ---: | ---: |").unwrap();
+    writeln!(output, "| --- | ---: | ---: | ---: | ---: | ---: | ---: |").unwrap();
     for (extension, metrics) in &scoreboard.metrics.per_extension {
         let label = if extension == "xlsx" {
             "<code>xlsx</code> (W2 gate)".to_owned()
@@ -122,12 +139,14 @@ fn render_extensions(output: &mut String, scoreboard: &Scoreboard) {
         };
         writeln!(
             output,
-            "| {} | {} | {} | {} | {} |",
+            "| {} | {} | {} | {} | {} | {} | {} |",
             label,
             metrics.files_attempted,
             ratio(&metrics.files_opened.wax),
             ratio(&metrics.files_opened.sheetjs),
-            ratio(&metrics.cell_value_match)
+            ratio(&metrics.cell_value_match),
+            ratio(&metrics.formula_fidelity),
+            ratio(&metrics.cached_result_fidelity)
         )
         .unwrap();
     }
@@ -189,6 +208,41 @@ fn milliseconds(value: Option<u64>) -> String {
     value
         .map(|value| format!("{value} ms"))
         .unwrap_or_else(|| "n/a".to_owned())
+}
+
+fn serve_ratio(scoreboard: &Scoreboard, metric: Option<&RatioMetric>) -> String {
+    match scoreboard.metrics.serve_status.status.as_str() {
+        "unavailable" => "n/a (serve unavailable)".to_owned(),
+        "disabled" => "n/a (serve disabled)".to_owned(),
+        _ => metric.map(ratio).unwrap_or_else(|| "n/a".to_owned()),
+    }
+}
+
+fn serve_latency(scoreboard: &Scoreboard) -> String {
+    match scoreboard.metrics.serve_status.status.as_str() {
+        "unavailable" => "n/a (serve unavailable)".to_owned(),
+        "disabled" => "n/a (serve disabled)".to_owned(),
+        _ => match (
+            scoreboard.metrics.window_latency_percentiles_ms.p50,
+            scoreboard.metrics.window_latency_percentiles_ms.p95,
+        ) {
+            (Some(p50), Some(p95)) => {
+                format!("{p50:.3} ms / {p95:.3} ms")
+            }
+            _ => "n/a".to_owned(),
+        },
+    }
+}
+
+fn serve_rss(scoreboard: &Scoreboard) -> String {
+    match scoreboard.metrics.serve_status.status.as_str() {
+        "unavailable" => "n/a (serve unavailable)".to_owned(),
+        "disabled" => "n/a (serve disabled)".to_owned(),
+        _ => rss(
+            scoreboard.metrics.serve_peak_rss_bytes.p50,
+            scoreboard.metrics.serve_peak_rss_bytes.max,
+        ),
+    }
 }
 
 fn rss(p50: Option<u64>, max: Option<u64>) -> String {
