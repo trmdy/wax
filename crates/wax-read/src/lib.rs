@@ -12,8 +12,10 @@ use wax_proto::ErrorCode;
 use zip::ZipArchive;
 
 mod calamine_reader;
+mod safety;
 
 pub use calamine_reader::CalamineReader;
+pub use safety::{guard_xml, preflight_container, preflight_path, read_with_deadline, SafetyError};
 
 pub const STUB_WARNING: &str =
     "stub reader: text via shared strings, formats, and dates are not implemented (W2)";
@@ -22,6 +24,17 @@ pub const STUB_WARNING: &str =
 pub struct ReaderOptions {
     pub max_cells: usize,
     pub timeout_ms: u64,
+    pub max_bytes: u64,
+    pub max_zip_entries: usize,
+    pub max_part_bytes: u64,
+    pub max_total_uncompressed_bytes: u64,
+    pub max_compression_ratio: u64,
+    pub compression_ratio_min_bytes: u64,
+    pub max_xml_depth: usize,
+    pub max_xml_token_bytes: usize,
+    pub max_xml_tokens: usize,
+    pub max_xml_bytes: u64,
+    pub max_declared_cells: u64,
 }
 
 impl Default for ReaderOptions {
@@ -29,6 +42,17 @@ impl Default for ReaderOptions {
         Self {
             max_cells: 200_000,
             timeout_ms: 30_000,
+            max_bytes: 100 * 1024 * 1024,
+            max_zip_entries: 10_000,
+            max_part_bytes: 512 * 1024 * 1024,
+            max_total_uncompressed_bytes: 2 * 1024 * 1024 * 1024,
+            max_compression_ratio: 100,
+            compression_ratio_min_bytes: 10 * 1024 * 1024,
+            max_xml_depth: 256,
+            max_xml_token_bytes: 8 * 1024 * 1024,
+            max_xml_tokens: 5_000_000,
+            max_xml_bytes: 512 * 1024 * 1024,
+            max_declared_cells: 8_000_000,
         }
     }
 }

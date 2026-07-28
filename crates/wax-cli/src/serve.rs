@@ -20,7 +20,7 @@ use wax_proto::{
     MetaResponse, OpenResponse, Request, Response, SheetSummary, StatsResponse, VersionResponse,
     WindowResponse, WireCell, PROTO_VERSION,
 };
-use wax_read::{CalamineReader, Reader, ReaderOptions};
+use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
 use wax_store::{Window, WindowCell, WorkbookStore};
 
 use crate::peak_rss_bytes;
@@ -597,8 +597,8 @@ fn open_workbook(
         ReaderOptions {
             max_cells,
             timeout_ms,
-            // W3C merge: set its additive `max_bytes` field from this
-            // function's `max_bytes`; the local metadata check enforces it now.
+            max_bytes,
+            ..ReaderOptions::default()
         },
     );
     checkpoint(cancel)?;
@@ -622,10 +622,8 @@ fn open_workbook(
     })
 }
 
-/// Merge seam for W3C: replace the body with
-/// `wax_read::read_with_deadline(CalamineReader, path, options)`.
 fn read_document_with_deadline(path: &Path, options: ReaderOptions) -> wax_core::Document {
-    CalamineReader.read(path, options)
+    read_with_deadline(CalamineReader, path, options)
 }
 
 fn checkpoint(cancel: &AtomicBool) -> Result<(), Failure> {

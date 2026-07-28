@@ -70,6 +70,23 @@ fn unsupported_file_still_exits_zero_with_failure_document() {
 }
 
 #[test]
+fn max_bytes_is_a_structured_failure() {
+    let output = wax()
+        .args(["dump", "--json"])
+        .arg(fixture_path())
+        .args(["--max-bytes", "1"])
+        .output()
+        .expect("wax should execute");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let dump: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should contain JSON");
+    assert_eq!(dump["ok"], false);
+    assert_eq!(dump["error"]["code"], "too_large");
+}
+
+#[test]
 fn usage_error_exits_two_without_stdout() {
     let output = wax()
         .args(["dump", "missing.xlsx"])

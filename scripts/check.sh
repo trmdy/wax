@@ -10,15 +10,19 @@ readonly HARNESS_MANIFEST="harness/wax-harness/Cargo.toml"
 readonly ORACLE_DIR="harness/oracle"
 
 fast=false
+fuzz_only=false
 
 usage() {
-  printf 'Usage: %s [--fast]\n' "${0##*/}" >&2
+  printf 'Usage: %s [--fast] [--fuzz-only]\n' "${0##*/}" >&2
 }
 
 while (($# > 0)); do
   case "$1" in
     --fast)
       fast=true
+      ;;
+    --fuzz-only)
+      fuzz_only=true
       ;;
     *)
       printf 'ERROR: unknown argument: %s\n' "$1" >&2
@@ -77,7 +81,55 @@ check_layout() {
   fi
 }
 
+smoke_fuzz_target() {
+  local nightly_toolchain="$1"
+  local target="$2"
+  local corpus_dir
+  local status=0
+
+  corpus_dir="$(mktemp -d "${TMPDIR:-/tmp}/wax-fuzz-${target}.XXXXXX")"
+  cp -R "fuzz/corpus/${target}/." "$corpus_dir/"
+  rustup run "$nightly_toolchain" cargo fuzz run "$target" "$corpus_dir" -- \
+    -max_total_time=30 -print_final_stats=1 -verbosity=0 || status=$?
+  rm -rf -- "$corpus_dir"
+  return "$status"
+}
+
+run_fuzz_checks() {
+  local nightly_toolchain
+  local target
+
+  if ! command -v rustup >/dev/null 2>&1; then
+    printf '\n==> SKIP: fuzz checks (rustup/nightly is not available)\n'
+    return 0
+  fi
+  nightly_toolchain="$(
+    rustup toolchain list |
+      awk '$1 ~ /^nightly(-|$)/ { print $1; exit }'
+  )"
+  if [[ -z "$nightly_toolchain" ]]; then
+    printf '\n==> SKIP: fuzz checks (nightly Rust is not installed)\n'
+    return 0
+  fi
+  if ! rustup run "$nightly_toolchain" cargo fuzz --version >/dev/null 2>&1; then
+    printf '\n==> SKIP: fuzz checks (cargo-fuzz is not installed)\n'
+    return 0
+  fi
+
+  run_step "fuzz: cargo fuzz build" \
+    rustup run "$nightly_toolchain" cargo fuzz build
+  for target in container_preflight xlsx_reader legacy_xls_reader; do
+    run_step "fuzz: ${target} 30 second smoke" \
+      smoke_fuzz_target "$nightly_toolchain" "$target"
+  done
+}
+
 cd "$REPO_ROOT"
+
+if [[ "$fuzz_only" == true ]]; then
+  run_fuzz_checks
+  exit 0
+fi
 
 run_step "preflight: repository layout and tools" check_layout
 
@@ -103,5 +155,7 @@ if command -v node >/dev/null 2>&1; then
 else
   printf '\n==> SKIP: oracle checks (node is not available)\n'
 fi
+
+run_fuzz_checks
 
 printf '\nAll CI checks passed.\n'

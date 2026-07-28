@@ -9,6 +9,7 @@ members = [
     "crates/wax-cli",
     "harness/wax-harness",
 ]
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]

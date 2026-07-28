@@ -1,0 +1,37 @@
+[package]
+name = "wax-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+members = ["."]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tempfile = "3.20.0"
+wax-read = { path = "../crates/wax-read" }
+
+[[bin]]
+name = "container_preflight"
+path = "fuzz_targets/container_preflight.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "xlsx_reader"
+path = "fuzz_targets/xlsx_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "legacy_xls_reader"
+path = "fuzz_targets/legacy_xls_reader.rs"
+test = false
+doc = false
+bench = false
