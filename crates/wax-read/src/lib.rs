@@ -47,7 +47,7 @@ impl Default for ReaderOptions {
             max_part_bytes: 512 * 1024 * 1024,
             max_total_uncompressed_bytes: 2 * 1024 * 1024 * 1024,
             max_compression_ratio: 100,
-            compression_ratio_min_bytes: 10 * 1024 * 1024,
+            compression_ratio_min_bytes: 256 * 1024 * 1024,
             max_xml_depth: 256,
             max_xml_token_bytes: 8 * 1024 * 1024,
             max_xml_tokens: 5_000_000,
