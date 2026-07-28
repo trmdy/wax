@@ -65,7 +65,7 @@
       "branch": "agent/wax-w1d-harness",
       "worktree": ".worktrees/w1d",
       "bee": "wax-w1d",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "harness/wax-harness/**",
         "harness/run.sh",
