@@ -1,0 +1,3 @@
+{"id":"fixtures/crash.xlsx","path":"files/crash.xlsx","sha256":"crash-sha","bytes":7,"ext":"xlsx","collection":"fixtures","source":"local:test","licence":"MIT","fetchedAt":"2026-07-28T00:00:00Z","private":false}
+{"id":"fixtures/diff.xlsx","path":"files/diff.xlsx","sha256":"diff-sha","bytes":6,"ext":"xlsx","collection":"fixtures","source":"local:test","licence":"MIT","fetchedAt":"2026-07-28T00:00:00Z","private":false}
+{"id":"fixtures/match.xlsx","path":"files/match.xlsx","sha256":"match-sha","bytes":7,"ext":"xlsx","collection":"fixtures","source":"local:test","licence":"MIT","fetchedAt":"2026-07-28T00:00:00Z","private":false}
