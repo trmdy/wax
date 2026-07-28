@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use sha2::{Digest, Sha256};
 use wax_proto::PROTO_VERSION;
-use wax_read::{Reader, ReaderOptions, StubReader};
+use wax_read::{CalamineReader, Reader, ReaderOptions};
 
 const USAGE: &str = "Usage:
   wax --version
@@ -51,7 +51,7 @@ fn run() -> i32 {
     };
 
     let started = Instant::now();
-    let mut document = StubReader.read(
+    let mut document = CalamineReader.read(
         &command.path,
         ReaderOptions {
             max_cells: command.max_cells,

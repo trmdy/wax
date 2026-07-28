@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub const DUMP_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CellType {
     N,

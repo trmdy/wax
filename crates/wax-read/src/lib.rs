@@ -11,6 +11,10 @@ use wax_core::{Cell, CellType, CellValue, Document, DumpError, Sheet};
 use wax_proto::ErrorCode;
 use zip::ZipArchive;
 
+mod calamine_reader;
+
+pub use calamine_reader::CalamineReader;
+
 pub const STUB_WARNING: &str =
     "stub reader: text via shared strings, formats, and dates are not implemented (W2)";
 
