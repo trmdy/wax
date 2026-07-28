@@ -908,6 +908,7 @@ dependencies = [
  "codepage",
  "encoding_rs",
  "quick-xml 0.38.4",
+ "serde_json",
  "tempfile",
  "wax-core",
  "wax-fmt",
