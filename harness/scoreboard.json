@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T03:41:53Z",
+  "generatedAt": "2026-07-28T03:44:42Z",
   "filesAttempted": 2048,
   "filesSkipped": 0,
   "metrics": {
@@ -17,15 +17,15 @@
       }
     },
     "cellValueMatch": {
-      "matched": 2681418,
+      "matched": 2687601,
       "total": 2910785,
-      "percent": 92.12009818657167
+      "percent": 92.33251511190281
     },
     "displayStringCoverage": {
       "wax": {
-        "matched": 2876829,
-        "total": 2879603,
-        "percent": 99.9036672763572
+        "matched": 2881671,
+        "total": 2882419,
+        "percent": 99.97404957433322
       },
       "sheetjs": {
         "matched": 2922256,
@@ -34,9 +34,9 @@
       }
     },
     "displayStringMatch": {
-      "matched": 2190072,
-      "total": 2875970,
-      "percent": 76.1507247989374
+      "matched": 2795836,
+      "total": 2880812,
+      "percent": 97.05027610270993
     },
     "formulaFidelity": {
       "matched": 85580,
@@ -44,14 +44,14 @@
       "percent": 18.802014219050715
     },
     "cachedResultFidelity": {
-      "matched": 240011,
+      "matched": 245227,
       "total": 455164,
-      "percent": 52.73066411227602
+      "percent": 53.87662468912304
     },
     "parseTimeMs": {
       "wax": {
         "p50": 0,
-        "p95": 4
+        "p95": 5
       },
       "sheetjs": {
         "p50": 8,
@@ -60,12 +60,12 @@
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 2736128,
-        "max": 1076346880
+        "p50": 2883584,
+        "max": 1076641792
       },
       "sheetjs": {
-        "p50": 93306880,
-        "max": 1251065856
+        "p50": 93323264,
+        "max": 1273282560
       }
     },
     "windowLatencyMs": {
@@ -78,12 +78,12 @@
       "percent": 95.8984375
     },
     "windowLatencyPercentilesMs": {
-      "p50": 7.615832999999999,
-      "p95": 11.721625
+      "p50": 7.641916,
+      "p95": 11.607083000000001
     },
     "servePeakRssBytes": {
-      "p50": 3014656,
-      "max": 1077592064
+      "p50": 3129344,
+      "max": 1077805056
     },
     "serveStatus": {
       "status": "available",
@@ -135,9 +135,9 @@
           }
         },
         "cellValueMatch": {
-          "matched": 1347464,
+          "matched": 1347474,
           "total": 1373463,
-          "percent": 98.10704765982047
+          "percent": 98.10777574641618
         },
         "formulaFidelity": {
           "matched": 7496,
@@ -165,9 +165,9 @@
           }
         },
         "cellValueMatch": {
-          "matched": 557991,
+          "matched": 564164,
           "total": 755203,
-          "percent": 73.88622661721418
+          "percent": 74.70362273454951
         },
         "formulaFidelity": {
           "matched": 1935,
@@ -175,9 +175,9 @@
           "percent": 0.7724119210902385
         },
         "cachedResultFidelity": {
-          "matched": 54662,
+          "matched": 59878,
           "total": 250514,
-          "percent": 21.819938207046313
+          "percent": 23.90205737004718
         }
       },
       "xlsm": {

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T03:41:53Z",
+  "generatedAt": "2026-07-28T03:44:42Z",
   "filesAttempted": 2048,
   "ranking": "corpusCellCount",
   "joinedCorpusFormats": true,
@@ -8,14 +8,14 @@
     "formatCodes": 484,
     "oracleCells": 909245,
     "waxDisplayCoverage": {
-      "matched": 898310,
+      "matched": 900472,
       "total": 909245,
-      "percent": 98.79735384852268
+      "percent": 99.03513354486415
     },
     "displayStringMatch": {
-      "matched": 220933,
-      "total": 898296,
-      "percent": 24.59467703296018
+      "matched": 824019,
+      "total": 900458,
+      "percent": 91.51109768584432
     }
   },
   "formats": [
@@ -31,9 +31,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 123,
+        "matched": 106179,
         "total": 106179,
-        "percent": 0.11584211567259063
+        "percent": 100.0
       }
     },
     {
@@ -48,9 +48,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 23,
+        "matched": 66779,
         "total": 67502,
-        "percent": 0.03407306450179254
+        "percent": 98.92892062457409
       }
     },
     {
@@ -65,9 +65,9 @@
         "percent": 99.81637172124508
       },
       "displayStringMatch": {
-        "matched": 3517,
+        "matched": 55350,
         "total": 55445,
-        "percent": 6.343223013797457
+        "percent": 99.82865903147263
       }
     },
     {
@@ -77,13 +77,13 @@
       "corpusCellCount": 52278,
       "corpusFileCount": 206,
       "waxDisplayCoverage": {
-        "matched": 51427,
+        "matched": 51666,
         "total": 52278,
-        "percent": 98.37216419908948
+        "percent": 98.82933547572593
       },
       "displayStringMatch": {
-        "matched": 51427,
-        "total": 51427,
+        "matched": 51666,
+        "total": 51666,
         "percent": 100.0
       }
     },
@@ -99,9 +99,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 432,
+        "matched": 41681,
         "total": 41735,
-        "percent": 1.0351024320115012
+        "percent": 99.87061219599856
       }
     },
     {
@@ -111,14 +111,14 @@
       "corpusCellCount": 32964,
       "corpusFileCount": 89,
       "waxDisplayCoverage": {
-        "matched": 32827,
+        "matched": 32835,
         "total": 32964,
-        "percent": 99.58439509768232
+        "percent": 99.60866399708773
       },
       "displayStringMatch": {
-        "matched": 27198,
-        "total": 32827,
-        "percent": 82.8525299296311
+        "matched": 31738,
+        "total": 32835,
+        "percent": 96.65905283995737
       }
     },
     {
@@ -133,9 +133,9 @@
         "percent": 89.35206162211146
       },
       "displayStringMatch": {
-        "matched": 339,
+        "matched": 23508,
         "total": 23664,
-        "percent": 1.432555780933063
+        "percent": 99.34077079107504
       }
     },
     {
@@ -145,14 +145,14 @@
       "corpusCellCount": 24287,
       "corpusFileCount": 32,
       "waxDisplayCoverage": {
-        "matched": 24122,
+        "matched": 24287,
         "total": 24287,
-        "percent": 99.32062420224811
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 20179,
-        "total": 24122,
-        "percent": 83.65392587679297
+        "matched": 24287,
+        "total": 24287,
+        "percent": 100.0
       }
     },
     {
@@ -167,9 +167,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 69,
+        "matched": 21850,
         "total": 21850,
-        "percent": 0.3157894736842105
+        "percent": 100.0
       }
     },
     {
@@ -196,14 +196,14 @@
       "corpusCellCount": 18189,
       "corpusFileCount": 111,
       "waxDisplayCoverage": {
-        "matched": 16635,
+        "matched": 17463,
         "total": 18188,
-        "percent": 91.46140312293821
+        "percent": 96.01385528920167
       },
       "displayStringMatch": {
-        "matched": 12390,
-        "total": 16635,
-        "percent": 74.48151487826871
+        "matched": 17288,
+        "total": 17463,
+        "percent": 98.99788123461032
       }
     },
     {
@@ -213,14 +213,14 @@
       "corpusCellCount": 18018,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 18014,
+        "matched": 18018,
         "total": 18018,
-        "percent": 99.97779997779998
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8,
-        "total": 18014,
-        "percent": 0.044409903408460086
+        "matched": 18018,
+        "total": 18018,
+        "percent": 100.0
       }
     },
     {
@@ -235,9 +235,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8182,
+        "matched": 16291,
         "total": 16301,
-        "percent": 50.19323967854733
+        "percent": 99.93865407030243
       }
     },
     {
@@ -247,14 +247,14 @@
       "corpusCellCount": 15275,
       "corpusFileCount": 106,
       "waxDisplayCoverage": {
-        "matched": 15125,
+        "matched": 15201,
         "total": 15255,
-        "percent": 99.14782038675844
+        "percent": 99.64601769911505
       },
       "displayStringMatch": {
-        "matched": 14194,
-        "total": 15123,
-        "percent": 93.85703894729882
+        "matched": 14886,
+        "total": 15199,
+        "percent": 97.94065399039411
       }
     },
     {
@@ -269,9 +269,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 176,
         "total": 14768,
-        "percent": 0.0
+        "percent": 1.191765980498375
       }
     },
     {
@@ -281,14 +281,14 @@
       "corpusCellCount": 12572,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12556,
+        "matched": 12540,
         "total": 12572,
-        "percent": 99.87273305758829
+        "percent": 99.74546611517658
       },
       "displayStringMatch": {
-        "matched": 13,
-        "total": 12556,
-        "percent": 0.10353615801210576
+        "matched": 6842,
+        "total": 12540,
+        "percent": 54.56140350877193
       }
     },
     {
@@ -298,14 +298,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 8,
-        "total": 12528,
-        "percent": 0.06385696040868455
+        "matched": 6830,
+        "total": 12520,
+        "percent": 54.552715654952074
       }
     },
     {
@@ -315,14 +315,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 12,
-        "total": 12528,
-        "percent": 0.09578544061302682
+        "matched": 12520,
+        "total": 12520,
+        "percent": 100.0
       }
     },
     {
@@ -332,14 +332,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 11,
-        "total": 12528,
-        "percent": 0.08780332056194125
+        "matched": 12520,
+        "total": 12520,
+        "percent": 100.0
       }
     },
     {
@@ -349,14 +349,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 8,
-        "total": 12528,
-        "percent": 0.06385696040868455
+        "matched": 6830,
+        "total": 12520,
+        "percent": 54.552715654952074
       }
     },
     {
@@ -366,14 +366,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 9,
-        "total": 12528,
-        "percent": 0.07183908045977011
+        "matched": 6410,
+        "total": 12520,
+        "percent": 51.198083067092654
       }
     },
     {
@@ -383,14 +383,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 12,
-        "total": 12528,
-        "percent": 0.09578544061302682
+        "matched": 12520,
+        "total": 12520,
+        "percent": 100.0
       }
     },
     {
@@ -400,14 +400,14 @@
       "corpusCellCount": 12536,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 12528,
+        "matched": 12520,
         "total": 12536,
-        "percent": 99.93618379068283
+        "percent": 99.87236758136567
       },
       "displayStringMatch": {
-        "matched": 11,
-        "total": 12528,
-        "percent": 0.08780332056194125
+        "matched": 12520,
+        "total": 12520,
+        "percent": 100.0
       }
     },
     {
@@ -422,9 +422,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 6394,
         "total": 12500,
-        "percent": 0.016
+        "percent": 51.152
       }
     },
     {
@@ -439,9 +439,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 6394,
         "total": 12500,
-        "percent": 0.008
+        "percent": 51.152
       }
     },
     {
@@ -456,9 +456,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 6818,
         "total": 12500,
-        "percent": 0.008
+        "percent": 54.544
       }
     },
     {
@@ -473,9 +473,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 6394,
         "total": 12500,
-        "percent": 0.008
+        "percent": 51.152
       }
     },
     {
@@ -490,9 +490,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 12500,
         "total": 12500,
-        "percent": 0.008
+        "percent": 100.0
       }
     },
     {
@@ -507,9 +507,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 12500,
         "total": 12500,
-        "percent": 0.008
+        "percent": 100.0
       }
     },
     {
@@ -524,9 +524,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 12500,
         "total": 12500,
-        "percent": 0.008
+        "percent": 100.0
       }
     },
     {
@@ -541,9 +541,9 @@
         "percent": 99.87813794784304
       },
       "displayStringMatch": {
-        "matched": 9704,
+        "matched": 12285,
         "total": 12294,
-        "percent": 78.93281275418903
+        "percent": 99.9267935578331
       }
     },
     {
@@ -558,9 +558,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 20,
+        "matched": 9664,
         "total": 11332,
-        "percent": 0.17649135192375573
+        "percent": 85.28062124955878
       }
     },
     {
@@ -570,14 +570,14 @@
       "corpusCellCount": 10169,
       "corpusFileCount": 38,
       "waxDisplayCoverage": {
-        "matched": 9347,
+        "matched": 10169,
         "total": 10169,
-        "percent": 91.91660930278297
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5990,
-        "total": 9347,
-        "percent": 64.08473306943404
+        "matched": 10166,
+        "total": 10169,
+        "percent": 99.97049857409775
       }
     },
     {
@@ -592,9 +592,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8,
+        "matched": 8429,
         "total": 8429,
-        "percent": 0.09491042828330763
+        "percent": 100.0
       }
     },
     {
@@ -609,9 +609,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 7998,
         "total": 7998,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -626,9 +626,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 7384,
         "total": 7384,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -643,9 +643,9 @@
         "percent": 97.79076396807298
       },
       "displayStringMatch": {
-        "matched": 6859,
+        "matched": 6861,
         "total": 6861,
-        "percent": 99.97084973036
+        "percent": 100.0
       }
     },
     {
@@ -655,14 +655,14 @@
       "corpusCellCount": 6983,
       "corpusFileCount": 141,
       "waxDisplayCoverage": {
-        "matched": 6829,
+        "matched": 6817,
         "total": 6974,
-        "percent": 97.92084886722111
+        "percent": 97.74878118726699
       },
       "displayStringMatch": {
         "matched": 263,
-        "total": 6829,
-        "percent": 3.8512227266071166
+        "total": 6817,
+        "percent": 3.8580020536893063
       }
     },
     {
@@ -672,14 +672,14 @@
       "corpusCellCount": 5888,
       "corpusFileCount": 91,
       "waxDisplayCoverage": {
-        "matched": 4253,
+        "matched": 4341,
         "total": 5888,
-        "percent": 72.23165760869566
+        "percent": 73.72622282608695
       },
       "displayStringMatch": {
-        "matched": 2357,
-        "total": 4253,
-        "percent": 55.4197037385375
+        "matched": 4314,
+        "total": 4341,
+        "percent": 99.37802349689012
       }
     },
     {
@@ -694,9 +694,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 139,
+        "matched": 5043,
         "total": 5043,
-        "percent": 2.756295855641483
+        "percent": 100.0
       }
     },
     {
@@ -711,9 +711,9 @@
         "percent": 99.40033085194375
       },
       "displayStringMatch": {
-        "matched": 1250,
+        "matched": 4785,
         "total": 4807,
-        "percent": 26.003744539213645
+        "percent": 99.54233409610984
       }
     },
     {
@@ -745,9 +745,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 4445,
         "total": 4445,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -762,9 +762,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 4438,
         "total": 4438,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -779,9 +779,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1925,
+        "matched": 3622,
         "total": 3624,
-        "percent": 53.118101545253865
+        "percent": 99.9448123620309
       }
     },
     {
@@ -791,14 +791,14 @@
       "corpusCellCount": 3284,
       "corpusFileCount": 38,
       "waxDisplayCoverage": {
-        "matched": 3280,
+        "matched": 3284,
         "total": 3284,
-        "percent": 99.87819732034104
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 924,
-        "total": 3280,
-        "percent": 28.170731707317074
+        "matched": 3091,
+        "total": 3284,
+        "percent": 94.12302070645555
       }
     },
     {
@@ -813,9 +813,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 67,
+        "matched": 2863,
         "total": 2863,
-        "percent": 2.340202584701362
+        "percent": 100.0
       }
     },
     {
@@ -864,9 +864,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 2505,
         "total": 2505,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -881,9 +881,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 108,
+        "matched": 2247,
         "total": 2247,
-        "percent": 4.806408544726302
+        "percent": 100.0
       }
     },
     {
@@ -915,9 +915,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 150,
+        "matched": 2166,
         "total": 2166,
-        "percent": 6.925207756232687
+        "percent": 100.0
       }
     },
     {
@@ -949,9 +949,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 800,
+        "matched": 1941,
         "total": 1941,
-        "percent": 41.21586810922205
+        "percent": 100.0
       }
     },
     {
@@ -983,9 +983,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1680,
         "total": 1680,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1000,9 +1000,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1602,
         "total": 1602,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1012,14 +1012,14 @@
       "corpusCellCount": 1601,
       "corpusFileCount": 18,
       "waxDisplayCoverage": {
-        "matched": 1598,
+        "matched": 1596,
         "total": 1601,
-        "percent": 99.81261711430356
+        "percent": 99.68769519050593
       },
       "displayStringMatch": {
-        "matched": 53,
-        "total": 1598,
-        "percent": 3.3166458072590737
+        "matched": 1596,
+        "total": 1596,
+        "percent": 100.0
       }
     },
     {
@@ -1051,9 +1051,9 @@
         "percent": 91.89189189189189
       },
       "displayStringMatch": {
-        "matched": 24,
+        "matched": 1428,
         "total": 1428,
-        "percent": 1.680672268907563
+        "percent": 100.0
       }
     },
     {
@@ -1068,9 +1068,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1533,
         "total": 1533,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1085,9 +1085,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 21,
+        "matched": 1532,
         "total": 1532,
-        "percent": 1.370757180156658
+        "percent": 100.0
       }
     },
     {
@@ -1102,9 +1102,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 40,
+        "matched": 1520,
         "total": 1520,
-        "percent": 2.6315789473684212
+        "percent": 100.0
       }
     },
     {
@@ -1119,9 +1119,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 39,
+        "matched": 1279,
         "total": 1279,
-        "percent": 3.0492572322126663
+        "percent": 100.0
       }
     },
     {
@@ -1136,9 +1136,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 1263,
         "total": 1273,
-        "percent": 0.7855459544383346
+        "percent": 99.21445404556167
       }
     },
     {
@@ -1148,14 +1148,14 @@
       "corpusCellCount": 1272,
       "corpusFileCount": 17,
       "waxDisplayCoverage": {
-        "matched": 1271,
+        "matched": 1269,
         "total": 1272,
-        "percent": 99.92138364779875
+        "percent": 99.76415094339623
       },
       "displayStringMatch": {
-        "matched": 185,
-        "total": 1271,
-        "percent": 14.555468135326514
+        "matched": 1267,
+        "total": 1269,
+        "percent": 99.84239558707644
       }
     },
     {
@@ -1170,9 +1170,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1252,
         "total": 1252,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1187,9 +1187,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1209,
         "total": 1209,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1221,9 +1221,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 12,
+        "matched": 951,
         "total": 1114,
-        "percent": 1.0771992818671454
+        "percent": 85.36804308797127
       }
     },
     {
@@ -1238,9 +1238,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 904,
+        "matched": 1080,
         "total": 1096,
-        "percent": 82.48175182481752
+        "percent": 98.54014598540147
       }
     },
     {
@@ -1255,9 +1255,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 1038,
         "total": 1092,
-        "percent": 0.9157509157509157
+        "percent": 95.05494505494505
       }
     },
     {
@@ -1272,9 +1272,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 840,
         "total": 1092,
-        "percent": 0.9157509157509157
+        "percent": 76.92307692307692
       }
     },
     {
@@ -1289,9 +1289,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 963,
         "total": 1092,
-        "percent": 0.9157509157509157
+        "percent": 88.18681318681318
       }
     },
     {
@@ -1306,9 +1306,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 1026,
         "total": 1092,
-        "percent": 0.9157509157509157
+        "percent": 93.95604395604396
       }
     },
     {
@@ -1323,9 +1323,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 1083,
         "total": 1092,
-        "percent": 0.9157509157509157
+        "percent": 99.17582417582418
       }
     },
     {
@@ -1340,9 +1340,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 1056,
         "total": 1092,
-        "percent": 0.9157509157509157
+        "percent": 96.7032967032967
       }
     },
     {
@@ -1357,9 +1357,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 9,
+        "matched": 1089,
         "total": 1092,
-        "percent": 0.8241758241758241
+        "percent": 99.72527472527473
       }
     },
     {
@@ -1374,9 +1374,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1053,
+        "matched": 1068,
         "total": 1068,
-        "percent": 98.59550561797752
+        "percent": 100.0
       }
     },
     {
@@ -1408,9 +1408,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 988,
         "total": 988,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1425,9 +1425,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 979,
         "total": 986,
-        "percent": 0.0
+        "percent": 99.29006085192698
       }
     },
     {
@@ -1437,14 +1437,14 @@
       "corpusCellCount": 948,
       "corpusFileCount": 15,
       "waxDisplayCoverage": {
-        "matched": 926,
+        "matched": 924,
         "total": 948,
-        "percent": 97.67932489451476
+        "percent": 97.46835443037975
       },
       "displayStringMatch": {
         "matched": 918,
-        "total": 926,
-        "percent": 99.13606911447084
+        "total": 924,
+        "percent": 99.35064935064935
       }
     },
     {
@@ -1459,9 +1459,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 912,
         "total": 930,
-        "percent": 0.43010752688172044
+        "percent": 98.06451612903226
       }
     },
     {
@@ -1493,9 +1493,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 689,
+        "matched": 701,
         "total": 716,
-        "percent": 96.22905027932961
+        "percent": 97.90502793296089
       }
     },
     {
@@ -1510,9 +1510,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 36,
+        "matched": 711,
         "total": 711,
-        "percent": 5.063291139240507
+        "percent": 100.0
       }
     },
     {
@@ -1527,9 +1527,9 @@
         "percent": 66.66666666666667
       },
       "displayStringMatch": {
-        "matched": 256,
+        "matched": 456,
         "total": 456,
-        "percent": 56.14035087719298
+        "percent": 100.0
       }
     },
     {
@@ -1561,9 +1561,9 @@
         "percent": 87.47940691927512
       },
       "displayStringMatch": {
-        "matched": 165,
+        "matched": 484,
         "total": 531,
-        "percent": 31.073446327683616
+        "percent": 91.1487758945386
       }
     },
     {
@@ -1578,9 +1578,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 6,
+        "matched": 588,
         "total": 588,
-        "percent": 1.0204081632653061
+        "percent": 100.0
       }
     },
     {
@@ -1629,9 +1629,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 534,
         "total": 534,
-        "percent": 0.5617977528089888
+        "percent": 100.0
       }
     },
     {
@@ -1646,9 +1646,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 528,
         "total": 528,
-        "percent": 0.5681818181818182
+        "percent": 100.0
       }
     },
     {
@@ -1663,9 +1663,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 528,
         "total": 528,
-        "percent": 0.5681818181818182
+        "percent": 100.0
       }
     },
     {
@@ -1680,9 +1680,9 @@
         "percent": 98.40319361277444
       },
       "displayStringMatch": {
-        "matched": 14,
+        "matched": 493,
         "total": 493,
-        "percent": 2.839756592292089
+        "percent": 100.0
       }
     },
     {
@@ -1709,14 +1709,14 @@
       "corpusCellCount": 492,
       "corpusFileCount": 35,
       "waxDisplayCoverage": {
-        "matched": 454,
+        "matched": 452,
         "total": 492,
-        "percent": 92.27642276422765
+        "percent": 91.869918699187
       },
       "displayStringMatch": {
-        "matched": 284,
-        "total": 454,
-        "percent": 62.55506607929515
+        "matched": 452,
+        "total": 452,
+        "percent": 100.0
       }
     },
     {
@@ -1765,9 +1765,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 432,
         "total": 432,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1777,13 +1777,13 @@
       "corpusCellCount": 402,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 268,
+        "matched": 402,
         "total": 402,
-        "percent": 66.66666666666667
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 268,
-        "total": 268,
+        "matched": 402,
+        "total": 402,
         "percent": 100.0
       }
     },
@@ -1799,9 +1799,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 396,
         "total": 396,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1816,9 +1816,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 254,
+        "matched": 381,
         "total": 381,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -1833,9 +1833,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 360,
         "total": 360,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -1850,9 +1850,9 @@
         "percent": 90.1685393258427
       },
       "displayStringMatch": {
-        "matched": 42,
+        "matched": 321,
         "total": 321,
-        "percent": 13.08411214953271
+        "percent": 100.0
       }
     },
     {
@@ -1896,13 +1896,13 @@
       "corpusCellCount": 327,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 218,
+        "matched": 327,
         "total": 327,
-        "percent": 66.66666666666667
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 218,
-        "total": 218,
+        "matched": 327,
+        "total": 327,
         "percent": 100.0
       }
     },
@@ -1952,9 +1952,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 46,
+        "matched": 292,
         "total": 300,
-        "percent": 15.333333333333334
+        "percent": 97.33333333333333
       }
     },
     {
@@ -1969,9 +1969,9 @@
         "percent": 98.32635983263599
       },
       "displayStringMatch": {
-        "matched": 170,
+        "matched": 235,
         "total": 235,
-        "percent": 72.34042553191489
+        "percent": 100.0
       }
     },
     {
@@ -1986,9 +1986,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 234,
         "total": 234,
-        "percent": 4.273504273504273
+        "percent": 100.0
       }
     },
     {
@@ -2003,9 +2003,9 @@
         "percent": 66.66666666666667
       },
       "displayStringMatch": {
-        "matched": 62,
+        "matched": 100,
         "total": 148,
-        "percent": 41.891891891891895
+        "percent": 67.56756756756756
       }
     },
     {
@@ -2054,9 +2054,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 88,
+        "matched": 176,
         "total": 176,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -2083,13 +2083,13 @@
       "corpusCellCount": 156,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 104,
+        "matched": 156,
         "total": 156,
-        "percent": 66.66666666666667
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 104,
-        "total": 104,
+        "matched": 156,
+        "total": 156,
         "percent": 100.0
       }
     },
@@ -2122,9 +2122,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 47,
+        "matched": 116,
         "total": 135,
-        "percent": 34.81481481481482
+        "percent": 85.92592592592592
       }
     },
     {
@@ -2156,9 +2156,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 86,
+        "matched": 127,
         "total": 127,
-        "percent": 67.71653543307086
+        "percent": 100.0
       }
     },
     {
@@ -2173,9 +2173,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 122,
         "total": 122,
-        "percent": 1.639344262295082
+        "percent": 100.0
       }
     },
     {
@@ -2190,9 +2190,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 21,
+        "matched": 117,
         "total": 117,
-        "percent": 17.94871794871795
+        "percent": 100.0
       }
     },
     {
@@ -2207,9 +2207,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 113,
+        "matched": 117,
         "total": 117,
-        "percent": 96.58119658119658
+        "percent": 100.0
       }
     },
     {
@@ -2236,14 +2236,14 @@
       "corpusCellCount": 108,
       "corpusFileCount": 6,
       "waxDisplayCoverage": {
-        "matched": 84,
+        "matched": 60,
         "total": 108,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 30,
-        "total": 84,
-        "percent": 35.714285714285715
+        "matched": 60,
+        "total": 60,
+        "percent": 100.0
       }
     },
     {
@@ -2253,14 +2253,14 @@
       "corpusCellCount": 108,
       "corpusFileCount": 6,
       "waxDisplayCoverage": {
-        "matched": 84,
+        "matched": 60,
         "total": 108,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 30,
-        "total": 84,
-        "percent": 35.714285714285715
+        "matched": 60,
+        "total": 60,
+        "percent": 100.0
       }
     },
     {
@@ -2275,9 +2275,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 45,
+        "matched": 91,
         "total": 106,
-        "percent": 42.45283018867924
+        "percent": 85.84905660377359
       }
     },
     {
@@ -2292,9 +2292,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 102,
         "total": 102,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2309,9 +2309,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 53,
+        "matched": 98,
         "total": 98,
-        "percent": 54.08163265306123
+        "percent": 100.0
       }
     },
     {
@@ -2326,9 +2326,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 98,
         "total": 98,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2360,9 +2360,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 74,
         "total": 90,
-        "percent": 5.555555555555555
+        "percent": 82.22222222222223
       }
     },
     {
@@ -2377,9 +2377,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 90,
         "total": 90,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2428,9 +2428,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 66,
         "total": 66,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2445,9 +2445,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 11,
+        "matched": 51,
         "total": 66,
-        "percent": 16.666666666666668
+        "percent": 77.27272727272727
       }
     },
     {
@@ -2457,14 +2457,14 @@
       "corpusCellCount": 65,
       "corpusFileCount": 14,
       "waxDisplayCoverage": {
-        "matched": 37,
+        "matched": 43,
         "total": 65,
-        "percent": 56.92307692307692
+        "percent": 66.15384615384616
       },
       "displayStringMatch": {
-        "matched": 33,
-        "total": 37,
-        "percent": 89.1891891891892
+        "matched": 43,
+        "total": 43,
+        "percent": 100.0
       }
     },
     {
@@ -2479,9 +2479,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 63,
         "total": 63,
-        "percent": 4.761904761904762
+        "percent": 100.0
       }
     },
     {
@@ -2513,9 +2513,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8,
+        "matched": 24,
         "total": 60,
-        "percent": 13.333333333333334
+        "percent": 40.0
       }
     },
     {
@@ -2530,9 +2530,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8,
+        "matched": 24,
         "total": 60,
-        "percent": 13.333333333333334
+        "percent": 40.0
       }
     },
     {
@@ -2547,9 +2547,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 57,
         "total": 57,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2564,9 +2564,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 38,
+        "matched": 57,
         "total": 57,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -2615,9 +2615,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 48,
         "total": 48,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2632,9 +2632,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 34,
+        "matched": 46,
         "total": 46,
-        "percent": 73.91304347826087
+        "percent": 100.0
       }
     },
     {
@@ -2649,9 +2649,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 45,
         "total": 45,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -2666,9 +2666,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 14,
+        "matched": 34,
         "total": 44,
-        "percent": 31.818181818181817
+        "percent": 77.27272727272727
       }
     },
     {
@@ -2683,9 +2683,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 14,
+        "matched": 34,
         "total": 44,
-        "percent": 31.818181818181817
+        "percent": 77.27272727272727
       }
     },
     {
@@ -2717,9 +2717,9 @@
         "percent": 97.67441860465117
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 32,
         "total": 42,
-        "percent": 23.80952380952381
+        "percent": 76.19047619047619
       }
     },
     {
@@ -2729,14 +2729,14 @@
       "corpusCellCount": 43,
       "corpusFileCount": 11,
       "waxDisplayCoverage": {
-        "matched": 38,
+        "matched": 28,
         "total": 43,
-        "percent": 88.37209302325581
+        "percent": 65.11627906976744
       },
       "displayStringMatch": {
-        "matched": 11,
-        "total": 38,
-        "percent": 28.94736842105263
+        "matched": 28,
+        "total": 28,
+        "percent": 100.0
       }
     },
     {
@@ -2768,9 +2768,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 13,
+        "matched": 31,
         "total": 40,
-        "percent": 32.5
+        "percent": 77.5
       }
     },
     {
@@ -2785,9 +2785,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 40,
-        "percent": 25.0
+        "percent": 75.0
       }
     },
     {
@@ -2802,9 +2802,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 40,
-        "percent": 25.0
+        "percent": 75.0
       }
     },
     {
@@ -2819,9 +2819,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 40,
-        "percent": 25.0
+        "percent": 75.0
       }
     },
     {
@@ -2836,9 +2836,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 40,
-        "percent": 25.0
+        "percent": 75.0
       }
     },
     {
@@ -2853,9 +2853,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 13,
+        "matched": 31,
         "total": 40,
-        "percent": 32.5
+        "percent": 77.5
       }
     },
     {
@@ -2870,9 +2870,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 13,
+        "matched": 31,
         "total": 40,
-        "percent": 32.5
+        "percent": 77.5
       }
     },
     {
@@ -2887,9 +2887,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 13,
+        "matched": 31,
         "total": 40,
-        "percent": 32.5
+        "percent": 77.5
       }
     },
     {
@@ -2938,9 +2938,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 12,
+        "matched": 36,
         "total": 39,
-        "percent": 30.76923076923077
+        "percent": 92.3076923076923
       }
     },
     {
@@ -2972,9 +2972,9 @@
         "percent": 43.58974358974359
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 17,
         "total": 17,
-        "percent": 17.647058823529413
+        "percent": 100.0
       }
     },
     {
@@ -3006,9 +3006,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 35,
+        "matched": 27,
         "total": 39,
-        "percent": 89.74358974358974
+        "percent": 69.23076923076923
       }
     },
     {
@@ -3040,9 +3040,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 33,
         "total": 36,
-        "percent": 0.0
+        "percent": 91.66666666666667
       }
     },
     {
@@ -3057,9 +3057,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 11,
+        "matched": 21,
         "total": 36,
-        "percent": 30.555555555555557
+        "percent": 58.333333333333336
       }
     },
     {
@@ -3125,9 +3125,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 20,
+        "matched": 36,
         "total": 36,
-        "percent": 55.55555555555556
+        "percent": 100.0
       }
     },
     {
@@ -3137,14 +3137,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 6,
-        "total": 28,
-        "percent": 21.428571428571427
+        "matched": 12,
+        "total": 20,
+        "percent": 60.0
       }
     },
     {
@@ -3159,9 +3159,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 22,
+        "matched": 36,
         "total": 36,
-        "percent": 61.111111111111114
+        "percent": 100.0
       }
     },
     {
@@ -3176,9 +3176,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 24,
+        "matched": 32,
         "total": 36,
-        "percent": 66.66666666666667
+        "percent": 88.88888888888889
       }
     },
     {
@@ -3193,9 +3193,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 22,
+        "matched": 36,
         "total": 36,
-        "percent": 61.111111111111114
+        "percent": 100.0
       }
     },
     {
@@ -3227,9 +3227,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 36,
         "total": 36,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -3239,14 +3239,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 12,
-        "total": 28,
-        "percent": 42.857142857142854
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3256,14 +3256,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3273,14 +3273,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3290,14 +3290,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3307,14 +3307,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 8,
-        "total": 28,
-        "percent": 28.571428571428573
+        "matched": 16,
+        "total": 20,
+        "percent": 80.0
       }
     },
     {
@@ -3324,14 +3324,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3341,14 +3341,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3358,14 +3358,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3375,14 +3375,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3392,14 +3392,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3409,14 +3409,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3426,14 +3426,14 @@
       "corpusCellCount": 36,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 28,
+        "matched": 20,
         "total": 36,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 28,
-        "percent": 35.714285714285715
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3443,14 +3443,14 @@
       "corpusCellCount": 35,
       "corpusFileCount": 5,
       "waxDisplayCoverage": {
-        "matched": 30,
+        "matched": 20,
         "total": 35,
-        "percent": 85.71428571428571
+        "percent": 57.142857142857146
       },
       "displayStringMatch": {
-        "matched": 10,
-        "total": 30,
-        "percent": 33.333333333333336
+        "matched": 20,
+        "total": 20,
+        "percent": 100.0
       }
     },
     {
@@ -3465,9 +3465,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 16,
+        "matched": 34,
         "total": 34,
-        "percent": 47.05882352941177
+        "percent": 100.0
       }
     },
     {
@@ -3482,9 +3482,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 13,
+        "matched": 33,
         "total": 33,
-        "percent": 39.39393939393939
+        "percent": 100.0
       }
     },
     {
@@ -3499,9 +3499,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 7,
+        "matched": 18,
         "total": 33,
-        "percent": 21.21212121212121
+        "percent": 54.54545454545455
       }
     },
     {
@@ -3516,9 +3516,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8,
+        "matched": 18,
         "total": 33,
-        "percent": 24.242424242424242
+        "percent": 54.54545454545455
       }
     },
     {
@@ -3528,14 +3528,14 @@
       "corpusCellCount": 32,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 24,
+        "matched": 16,
         "total": 32,
-        "percent": 75.0
+        "percent": 50.0
       },
       "displayStringMatch": {
-        "matched": 8,
-        "total": 24,
-        "percent": 33.333333333333336
+        "matched": 16,
+        "total": 16,
+        "percent": 100.0
       }
     },
     {
@@ -3567,9 +3567,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 11,
+        "matched": 31,
         "total": 31,
-        "percent": 35.483870967741936
+        "percent": 100.0
       }
     },
     {
@@ -3584,9 +3584,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 16,
         "total": 31,
-        "percent": 16.129032258064516
+        "percent": 51.61290322580645
       }
     },
     {
@@ -3618,9 +3618,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3635,9 +3635,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3652,9 +3652,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 30,
         "total": 30,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -3669,9 +3669,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3686,9 +3686,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3703,9 +3703,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3720,9 +3720,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3737,9 +3737,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3754,9 +3754,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3771,9 +3771,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3788,9 +3788,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3805,9 +3805,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 12,
         "total": 30,
-        "percent": 13.333333333333334
+        "percent": 40.0
       }
     },
     {
@@ -3822,9 +3822,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3839,9 +3839,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3856,9 +3856,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3873,9 +3873,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3890,9 +3890,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3907,9 +3907,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3924,9 +3924,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3941,9 +3941,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3958,9 +3958,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 30,
         "total": 30,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -3975,9 +3975,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -3992,9 +3992,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -4009,9 +4009,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 15,
         "total": 30,
-        "percent": 16.666666666666668
+        "percent": 50.0
       }
     },
     {
@@ -4060,9 +4060,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 19,
+        "matched": 26,
         "total": 26,
-        "percent": 73.07692307692308
+        "percent": 100.0
       }
     },
     {
@@ -4094,9 +4094,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 12,
+        "matched": 24,
         "total": 24,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -4128,9 +4128,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 22,
         "total": 22,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -4145,9 +4145,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 12,
+        "matched": 22,
         "total": 22,
-        "percent": 54.54545454545455
+        "percent": 100.0
       }
     },
     {
@@ -4162,9 +4162,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 12,
+        "matched": 22,
         "total": 22,
-        "percent": 54.54545454545455
+        "percent": 100.0
       }
     },
     {
@@ -4230,9 +4230,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 20,
         "total": 20,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -4247,9 +4247,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 8,
+        "matched": 20,
         "total": 20,
-        "percent": 40.0
+        "percent": 100.0
       }
     },
     {
@@ -4412,14 +4412,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 6,
-        "total": 14,
-        "percent": 42.857142857142854
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4429,14 +4429,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4446,14 +4446,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4463,14 +4463,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4480,14 +4480,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 3,
-        "total": 14,
-        "percent": 21.428571428571427
+        "matched": 6,
+        "total": 10,
+        "percent": 60.0
       }
     },
     {
@@ -4497,14 +4497,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 4,
-        "total": 14,
-        "percent": 28.571428571428573
+        "matched": 8,
+        "total": 10,
+        "percent": 80.0
       }
     },
     {
@@ -4514,14 +4514,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 4,
-        "total": 14,
-        "percent": 28.571428571428573
+        "matched": 8,
+        "total": 10,
+        "percent": 80.0
       }
     },
     {
@@ -4531,14 +4531,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 4,
-        "total": 14,
-        "percent": 28.571428571428573
+        "matched": 8,
+        "total": 10,
+        "percent": 80.0
       }
     },
     {
@@ -4548,14 +4548,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 4,
-        "total": 14,
-        "percent": 28.571428571428573
+        "matched": 8,
+        "total": 10,
+        "percent": 80.0
       }
     },
     {
@@ -4565,14 +4565,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4582,14 +4582,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4599,14 +4599,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4616,14 +4616,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4633,14 +4633,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4650,14 +4650,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4667,14 +4667,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4684,14 +4684,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4701,14 +4701,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4774,9 +4774,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 10,
+        "matched": 18,
         "total": 18,
-        "percent": 55.55555555555556
+        "percent": 100.0
       }
     },
     {
@@ -4786,14 +4786,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 3,
-        "total": 14,
-        "percent": 21.428571428571427
+        "matched": 6,
+        "total": 10,
+        "percent": 60.0
       }
     },
     {
@@ -4808,9 +4808,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 11,
+        "matched": 18,
         "total": 18,
-        "percent": 61.111111111111114
+        "percent": 100.0
       }
     },
     {
@@ -4825,9 +4825,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 12,
+        "matched": 16,
         "total": 18,
-        "percent": 66.66666666666667
+        "percent": 88.88888888888889
       }
     },
     {
@@ -4837,14 +4837,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4854,14 +4854,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 14,
+        "matched": 10,
         "total": 18,
-        "percent": 77.77777777777777
+        "percent": 55.55555555555556
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 14,
-        "percent": 35.714285714285715
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -4876,9 +4876,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 11,
+        "matched": 18,
         "total": 18,
-        "percent": 61.111111111111114
+        "percent": 100.0
       }
     },
     {
@@ -4910,9 +4910,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 9,
+        "matched": 18,
         "total": 18,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -4922,14 +4922,14 @@
       "corpusCellCount": 18,
       "corpusFileCount": 10,
       "waxDisplayCoverage": {
-        "matched": 16,
+        "matched": 14,
         "total": 18,
-        "percent": 88.88888888888889
+        "percent": 77.77777777777777
       },
       "displayStringMatch": {
-        "matched": 5,
-        "total": 16,
-        "percent": 31.25
+        "matched": 8,
+        "total": 14,
+        "percent": 57.142857142857146
       }
     },
     {
@@ -4961,9 +4961,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 17,
         "total": 17,
-        "percent": 17.647058823529413
+        "percent": 100.0
       }
     },
     {
@@ -5012,9 +5012,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 16,
         "total": 16,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -5024,14 +5024,14 @@
       "corpusCellCount": 16,
       "corpusFileCount": 2,
       "waxDisplayCoverage": {
-        "matched": 16,
+        "matched": 12,
         "total": 16,
-        "percent": 100.0
+        "percent": 75.0
       },
       "displayStringMatch": {
-        "matched": 8,
-        "total": 16,
-        "percent": 50.0
+        "matched": 12,
+        "total": 12,
+        "percent": 100.0
       }
     },
     {
@@ -5109,13 +5109,13 @@
       "corpusCellCount": 15,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 11,
+        "matched": 15,
         "total": 15,
-        "percent": 73.33333333333333
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 11,
-        "total": 11,
+        "matched": 15,
+        "total": 15,
         "percent": 100.0
       }
     },
@@ -5160,14 +5160,14 @@
       "corpusCellCount": 13,
       "corpusFileCount": 7,
       "waxDisplayCoverage": {
-        "matched": 12,
+        "matched": 10,
         "total": 13,
-        "percent": 92.3076923076923
+        "percent": 76.92307692307692
       },
       "displayStringMatch": {
-        "matched": 4,
-        "total": 12,
-        "percent": 33.333333333333336
+        "matched": 10,
+        "total": 10,
+        "percent": 100.0
       }
     },
     {
@@ -5177,14 +5177,14 @@
       "corpusCellCount": 13,
       "corpusFileCount": 7,
       "waxDisplayCoverage": {
-        "matched": 11,
+        "matched": 9,
         "total": 13,
-        "percent": 84.61538461538461
+        "percent": 69.23076923076923
       },
       "displayStringMatch": {
-        "matched": 4,
-        "total": 11,
-        "percent": 36.36363636363637
+        "matched": 9,
+        "total": 9,
+        "percent": 100.0
       }
     },
     {
@@ -5233,9 +5233,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 12,
         "total": 12,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -5262,14 +5262,14 @@
       "corpusCellCount": 12,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 11,
+        "matched": 9,
         "total": 12,
-        "percent": 91.66666666666667
+        "percent": 75.0
       },
       "displayStringMatch": {
-        "matched": 2,
-        "total": 11,
-        "percent": 18.181818181818183
+        "matched": 6,
+        "total": 9,
+        "percent": 66.66666666666667
       }
     },
     {
@@ -5284,9 +5284,9 @@
         "percent": 83.33333333333333
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 10,
         "total": 10,
-        "percent": 40.0
+        "percent": 100.0
       }
     },
     {
@@ -5772,14 +5772,14 @@
       "corpusCellCount": 10,
       "corpusFileCount": 4,
       "waxDisplayCoverage": {
-        "matched": 9,
+        "matched": 7,
         "total": 10,
-        "percent": 90.0
+        "percent": 70.0
       },
       "displayStringMatch": {
-        "matched": 3,
-        "total": 9,
-        "percent": 33.333333333333336
+        "matched": 7,
+        "total": 7,
+        "percent": 100.0
       }
     },
     {
@@ -5947,9 +5947,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 6,
         "total": 10,
-        "percent": 0.0
+        "percent": 60.0
       }
     },
     {
@@ -6032,9 +6032,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 9,
         "total": 9,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6049,9 +6049,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 9,
         "total": 9,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6066,9 +6066,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 9,
         "total": 9,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6083,9 +6083,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 9,
         "total": 9,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6100,9 +6100,9 @@
         "percent": 66.66666666666667
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 6,
         "total": 6,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -6112,14 +6112,14 @@
       "corpusCellCount": 9,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 8,
+        "matched": 9,
         "total": 9,
-        "percent": 88.88888888888889
+        "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
-        "total": 8,
-        "percent": 25.0
+        "matched": 9,
+        "total": 9,
+        "percent": 100.0
       }
     },
     {
@@ -6134,9 +6134,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 7,
+        "matched": 9,
         "total": 9,
-        "percent": 77.77777777777777
+        "percent": 100.0
       }
     },
     {
@@ -6151,9 +6151,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 5,
+        "matched": 9,
         "total": 9,
-        "percent": 55.55555555555556
+        "percent": 100.0
       }
     },
     {
@@ -6168,9 +6168,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 9,
         "total": 9,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6185,9 +6185,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 9,
         "total": 9,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6197,14 +6197,14 @@
       "corpusCellCount": 9,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 8,
+        "matched": 6,
         "total": 9,
-        "percent": 88.88888888888889
+        "percent": 66.66666666666667
       },
       "displayStringMatch": {
-        "matched": 2,
-        "total": 8,
-        "percent": 25.0
+        "matched": 6,
+        "total": 6,
+        "percent": 100.0
       }
     },
     {
@@ -6253,9 +6253,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 7,
         "total": 7,
-        "percent": 28.571428571428573
+        "percent": 100.0
       }
     },
     {
@@ -6270,9 +6270,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 6,
         "total": 6,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6287,9 +6287,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 6,
         "total": 6,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6304,9 +6304,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 6,
         "total": 6,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6321,9 +6321,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 6,
         "total": 6,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -6338,9 +6338,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 6,
         "total": 6,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -6355,9 +6355,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 6,
         "total": 6,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6406,9 +6406,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 6,
         "total": 6,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -6418,14 +6418,14 @@
       "corpusCellCount": 6,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 2,
+        "matched": 0,
         "total": 6,
-        "percent": 33.333333333333336
+        "percent": 0.0
       },
       "displayStringMatch": {
         "matched": 0,
-        "total": 2,
-        "percent": 0.0
+        "total": 0,
+        "percent": null
       }
     },
     {
@@ -6440,9 +6440,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 6,
         "total": 6,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -6457,9 +6457,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 6,
         "total": 6,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6474,9 +6474,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 6,
         "total": 6,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6491,9 +6491,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 6,
         "total": 6,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6508,9 +6508,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 4,
+        "matched": 6,
         "total": 6,
-        "percent": 66.66666666666667
+        "percent": 100.0
       }
     },
     {
@@ -6537,13 +6537,13 @@
       "corpusCellCount": 6,
       "corpusFileCount": 3,
       "waxDisplayCoverage": {
-        "matched": 5,
+        "matched": 3,
         "total": 6,
-        "percent": 83.33333333333333
+        "percent": 50.0
       },
       "displayStringMatch": {
         "matched": 0,
-        "total": 5,
+        "total": 3,
         "percent": 0.0
       }
     },
@@ -6559,9 +6559,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 3,
+        "matched": 6,
         "total": 6,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -6593,9 +6593,9 @@
         "percent": 66.66666666666667
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 4,
         "total": 4,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6610,9 +6610,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 6,
         "total": 6,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -6644,9 +6644,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 5,
         "total": 5,
-        "percent": 20.0
+        "percent": 100.0
       }
     },
     {
@@ -6661,9 +6661,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 2,
+        "matched": 5,
         "total": 5,
-        "percent": 40.0
+        "percent": 100.0
       }
     },
     {
@@ -6797,9 +6797,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 4,
         "total": 4,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6848,9 +6848,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 4,
         "total": 4,
-        "percent": 25.0
+        "percent": 100.0
       }
     },
     {
@@ -6865,9 +6865,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -6916,9 +6916,9 @@
         "percent": 66.66666666666667
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 2,
         "total": 2,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7001,9 +7001,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 3,
         "total": 3,
-        "percent": 33.333333333333336
+        "percent": 100.0
       }
     },
     {
@@ -7035,9 +7035,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7086,9 +7086,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7103,9 +7103,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7205,9 +7205,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7239,9 +7239,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7256,9 +7256,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7307,9 +7307,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7341,9 +7341,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 3,
         "total": 3,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7392,9 +7392,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 2,
         "total": 2,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -7409,9 +7409,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 2,
         "total": 2,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -7426,9 +7426,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 2,
         "total": 2,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -7443,9 +7443,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 2,
         "total": 2,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -7460,9 +7460,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 2,
         "total": 2,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -7494,9 +7494,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 2,
         "total": 2,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7511,9 +7511,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 2,
         "total": 2,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7528,9 +7528,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 1,
+        "matched": 2,
         "total": 2,
-        "percent": 50.0
+        "percent": 100.0
       }
     },
     {
@@ -7545,9 +7545,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 2,
         "total": 2,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7613,9 +7613,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 2,
         "total": 2,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7800,9 +7800,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7817,9 +7817,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7829,14 +7829,14 @@
       "corpusCellCount": 1,
       "corpusFileCount": 1,
       "waxDisplayCoverage": {
-        "matched": 1,
-        "total": 1,
-        "percent": 100.0
-      },
-      "displayStringMatch": {
         "matched": 0,
         "total": 1,
         "percent": 0.0
+      },
+      "displayStringMatch": {
+        "matched": 0,
+        "total": 0,
+        "percent": null
       }
     },
     {
@@ -7846,14 +7846,14 @@
       "corpusCellCount": 1,
       "corpusFileCount": 1,
       "waxDisplayCoverage": {
-        "matched": 1,
-        "total": 1,
-        "percent": 100.0
-      },
-      "displayStringMatch": {
         "matched": 0,
         "total": 1,
         "percent": 0.0
+      },
+      "displayStringMatch": {
+        "matched": 0,
+        "total": 0,
+        "percent": null
       }
     },
     {
@@ -7902,9 +7902,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7919,9 +7919,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -7953,9 +7953,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -8004,9 +8004,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -8055,9 +8055,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -8089,9 +8089,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -8140,9 +8140,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
@@ -8157,9 +8157,9 @@
         "percent": 100.0
       },
       "displayStringMatch": {
-        "matched": 0,
+        "matched": 1,
         "total": 1,
-        "percent": 0.0
+        "percent": 100.0
       }
     },
     {
