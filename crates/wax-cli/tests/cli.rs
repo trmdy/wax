@@ -11,7 +11,7 @@ fn fixture_path() -> PathBuf {
         .join("wax-read")
         .join("tests")
         .join("fixtures")
-        .join("tiny.xlsx")
+        .join("reader.xlsx")
 }
 
 #[test]

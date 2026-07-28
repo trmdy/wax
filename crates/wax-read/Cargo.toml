@@ -5,8 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+calamine.workspace = true
 quick-xml.workspace = true
 wax-core = { path = "../wax-core" }
+wax-fmt = { path = "../wax-fmt" }
 wax-proto = { path = "../wax-proto" }
 zip.workspace = true
 
