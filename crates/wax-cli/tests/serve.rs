@@ -257,16 +257,16 @@ fn csv_export_is_rfc_4180_and_xlsx_reaches_writer_stub() {
         ])
     );
 
+    // With the W4A writer merged, xlsx export over serve succeeds for real.
+    let copy = temp.path().join("copy.xlsx");
     server.send(json!({
-        "id":32,"op":"export","handle":"h1","format":"xlsx",
-        "out":temp.path().join("copy.xlsx")
+        "id":32,"op":"export","handle":"h1","format":"xlsx","out":copy
     }));
     let xlsx = server.receive();
-    assert_eq!(xlsx["code"], "internal");
-    assert!(xlsx["msg"]
-        .as_str()
-        .expect("message")
-        .contains("xlsx export is not implemented"));
+    assert_eq!(xlsx["ok"], true, "{xlsx}");
+    assert!(xlsx["bytes"].as_u64().expect("bytes") > 0);
+    assert!(xlsx["dropped"].is_array());
+    assert!(copy.exists());
     assert!(server.eof().success());
 }
 

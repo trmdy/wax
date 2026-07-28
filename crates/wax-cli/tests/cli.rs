@@ -147,8 +147,17 @@ fn export_reader_failure_is_one_flat_json_line_and_exits_zero() {
 
 #[test]
 fn export_writer_failure_is_one_flat_json_line_and_exits_zero() {
+    // Originally pinned against the pre-W4A stub; now that the writer is
+    // real, force a genuine writer failure: an output directory the
+    // process cannot create files in.
+    use std::os::unix::fs::PermissionsExt;
+
     let temp = tempfile::tempdir().expect("temporary directory");
-    let output_path = temp.path().join("copy.xlsx");
+    let readonly = temp.path().join("readonly");
+    std::fs::create_dir(&readonly).expect("readonly directory should be created");
+    std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o555))
+        .expect("permissions should be set");
+    let output_path = readonly.join("copy.xlsx");
 
     let output = wax()
         .args(["export", "--json"])
@@ -161,11 +170,11 @@ fn export_writer_failure_is_one_flat_json_line_and_exits_zero() {
 
     assert_eq!(result["ok"], false);
     assert_eq!(result["code"], "internal");
-    assert!(result["msg"]
-        .as_str()
-        .expect("message")
-        .contains("xlsx export is not implemented"));
+    assert!(result["msg"].is_string());
     assert!(!output_path.exists());
+
+    std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o755))
+        .expect("permissions should be restored for cleanup");
 }
 
 #[test]
