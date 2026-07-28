@@ -818,8 +818,10 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "wax-core",
  "wax-proto",
  "wax-read",
+ "wax-store",
 ]
 
 [[package]]
@@ -857,6 +859,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "wax-core",
 ]
 
 [[package]]

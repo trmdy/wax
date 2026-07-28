@@ -10,9 +10,12 @@ use sha2::{Digest, Sha256};
 use wax_proto::PROTO_VERSION;
 use wax_read::{CalamineReader, Reader, ReaderOptions};
 
+mod serve;
+
 const USAGE: &str = "Usage:
   wax --version
-  wax dump --json <file> [--max-cells N] [--timeout-ms N]";
+  wax dump --json <file> [--max-cells N] [--timeout-ms N]
+  wax serve [--idle-timeout-ms N] [--max-handles N]";
 
 fn main() -> ExitCode {
     ExitCode::from(run() as u8)
@@ -34,7 +37,7 @@ fn run() -> i32 {
         return 0;
     }
 
-    let command = match parse_dump_arguments(&arguments) {
+    let command = match parse_arguments(&arguments) {
         Ok(command) => command,
         Err(message) => {
             eprintln!("{message}\n{USAGE}");
@@ -42,6 +45,19 @@ fn run() -> i32 {
         }
     };
 
+    match command {
+        Command::Dump(command) => run_dump(command),
+        Command::Serve(config) => match serve::run(config) {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!("wax serve: {error}");
+                1
+            }
+        },
+    }
+}
+
+fn run_dump(command: DumpCommand) -> i32 {
     let sha256 = match sha256_file(&command.path) {
         Ok(sha256) => sha256,
         Err(error) => {
@@ -76,17 +92,28 @@ fn run() -> i32 {
 }
 
 #[derive(Debug)]
+enum Command {
+    Dump(DumpCommand),
+    Serve(serve::Config),
+}
+
+#[derive(Debug)]
 struct DumpCommand {
     path: PathBuf,
     max_cells: usize,
     timeout_ms: u64,
 }
 
-fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
-    if arguments.first().is_none_or(|argument| argument != "dump") {
-        return Err("wax: expected the `dump` command".to_owned());
+fn parse_arguments(arguments: &[OsString]) -> Result<Command, String> {
+    match arguments.first().and_then(|argument| argument.to_str()) {
+        Some("dump") => parse_dump_arguments(arguments).map(Command::Dump),
+        Some("serve") => parse_serve_arguments(arguments).map(Command::Serve),
+        Some(command) => Err(format!("wax: unknown command `{command}`")),
+        None => Err("wax: expected a command".to_owned()),
     }
+}
 
+fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
     let mut saw_json = false;
     let mut path = None;
     let mut max_cells = ReaderOptions::default().max_cells;
@@ -127,6 +154,35 @@ fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
         max_cells,
         timeout_ms,
     })
+}
+
+fn parse_serve_arguments(arguments: &[OsString]) -> Result<serve::Config, String> {
+    let mut config = serve::Config::default();
+    let mut index = 1;
+    while index < arguments.len() {
+        let flag = arguments[index]
+            .to_str()
+            .ok_or_else(|| "wax: serve options must be valid UTF-8".to_owned())?;
+        match flag {
+            "--idle-timeout-ms" => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --idle-timeout-ms requires a value".to_owned())?;
+                config.idle_timeout_ms = parse_number(value, "--idle-timeout-ms")?;
+            }
+            "--max-handles" => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --max-handles requires a value".to_owned())?;
+                config.max_handles = parse_number(value, "--max-handles")?;
+            }
+            _ => return Err(format!("wax: unknown option `{flag}`")),
+        }
+        index += 1;
+    }
+    Ok(config)
 }
 
 fn parse_number<T>(value: &OsStr, flag: &str) -> Result<T, String>
@@ -174,7 +230,7 @@ fn display_path(path: &Path) -> String {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-fn peak_rss_bytes() -> Option<u64> {
+pub(crate) fn peak_rss_bytes() -> Option<u64> {
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
     // SAFETY: getrusage initializes the provided rusage value when it returns zero.
     let result = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
@@ -195,6 +251,52 @@ fn peak_rss_bytes() -> Option<u64> {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-fn peak_rss_bytes() -> Option<u64> {
+pub(crate) fn peak_rss_bytes() -> Option<u64> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(values: &[&str]) -> Vec<OsString> {
+        values.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn serve_defaults_match_contract() {
+        let Command::Serve(config) = parse_arguments(&args(&["serve"])).expect("should parse")
+        else {
+            panic!("expected serve command");
+        };
+        assert_eq!(config.idle_timeout_ms, 300_000);
+        assert_eq!(config.max_handles, 16);
+    }
+
+    #[test]
+    fn serve_options_parse_in_either_order() {
+        let Command::Serve(config) = parse_arguments(&args(&[
+            "serve",
+            "--max-handles",
+            "3",
+            "--idle-timeout-ms",
+            "20",
+        ]))
+        .expect("should parse") else {
+            panic!("expected serve command");
+        };
+        assert_eq!(config.idle_timeout_ms, 20);
+        assert_eq!(config.max_handles, 3);
+    }
+
+    #[test]
+    fn serve_rejects_positional_and_invalid_options() {
+        for values in [
+            vec!["serve", "file.xlsx"],
+            vec!["serve", "--max-handles"],
+            vec!["serve", "--idle-timeout-ms", "-1"],
+        ] {
+            assert!(parse_arguments(&args(&values)).is_err());
+        }
+    }
 }
