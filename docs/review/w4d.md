@@ -93,3 +93,12 @@ this review.
 
 - 2026-07-28: findings 1–2 sent to the shard as required pre-merge
   fixes; XF-0 design approved; finding 3 deferred to W5.
+- 2026-07-28 (fixes sealed, commit f90bd0b): width expansion rewritten
+  to reverse last-declaration-wins traversal with a disjoint-successor
+  set — O(declarations + cap); the 20,000-declaration whole-sheet probe
+  now completes in 0.01s (was 104.9s) with exactly 16,384 entries
+  pinned by regression test. Style-attribute junk is now local to its
+  entry (index-preserving placeholders for fonts/fills/XFs, skipped bad
+  numFmts); XML-level malformation alone still fails the part. Unit +
+  real-OOXML integration tests prove one bad font/color no longer
+  discards valid formats. Full check green; merged to main.
