@@ -142,7 +142,7 @@
       "branch": "agent/wax-w3a-proto",
       "worktree": ".worktrees/w3a",
       "bee": "wax-w3a",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "crates/wax-proto/**",
         "crates/wax-cli/**"
