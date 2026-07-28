@@ -15,8 +15,10 @@ use wait_timeout::ChildExt;
 
 use crate::aggregate::{aggregate, Scoreboard};
 use crate::compare::{compare, FileMetrics, ToolObservation};
+use crate::formats::{aggregate_format_coverage, load_corpus_format_index};
 use crate::model::{DumpDocument, ExpectedDump, Tool};
-use crate::render::render_markdown;
+use crate::render::render_markdown_with_formats;
+use crate::triage::render_triage;
 
 const DEFAULT_MAX_CELLS: u64 = 200_000;
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -41,6 +43,8 @@ pub struct RunnerReport {
     pub results_path: PathBuf,
     pub scoreboard_json_path: PathBuf,
     pub scoreboard_markdown_path: PathBuf,
+    pub format_coverage_path: PathBuf,
+    pub triage_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -83,6 +87,8 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
         .with_context(|| format!("failed to create {}", harness_dir.display()))?;
     let results_path = harness_dir.join("results.jsonl");
     let scoreboard_json_path = harness_dir.join("scoreboard.json");
+    let format_coverage_path = harness_dir.join("format-coverage.json");
+    let triage_path = harness_dir.join("triage.md");
     let scoreboard_markdown_path = config.repo_root.join("SCOREBOARD.md");
 
     let results_file = File::create(&results_path)
@@ -131,11 +137,18 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
     results.sort_by(|left, right| left.id.cmp(&right.id));
 
     let generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    let scoreboard = aggregate(&results, skipped, generated_at);
+    let scoreboard = aggregate(&results, skipped, generated_at.clone());
+    let corpus_formats =
+        load_corpus_format_index(&config.repo_root.join("harness/formats/corpus-formats.json"))?;
+    let format_coverage =
+        aggregate_format_coverage(&results, generated_at.clone(), corpus_formats.as_ref());
+    let triage = render_triage(&results, &generated_at);
     write_json_atomic(&scoreboard_json_path, &scoreboard)?;
+    write_json_atomic(&format_coverage_path, &format_coverage)?;
+    write_bytes_atomic(&triage_path, triage.as_bytes())?;
     write_bytes_atomic(
         &scoreboard_markdown_path,
-        render_markdown(&scoreboard).as_bytes(),
+        render_markdown_with_formats(&scoreboard, Some(&format_coverage)).as_bytes(),
     )?;
 
     Ok(RunnerReport {
@@ -143,6 +156,8 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
         results_path,
         scoreboard_json_path,
         scoreboard_markdown_path,
+        format_coverage_path,
+        triage_path,
     })
 }
 
@@ -298,13 +313,15 @@ fn process_entry(entry: &ManifestEntry, config: &RunnerConfig) -> FileMetrics {
         config,
     );
 
-    compare(
+    let mut result = compare(
         entry.id.clone(),
         entry.path.clone(),
         entry.sha256.clone(),
         &wax,
         &sheetjs,
-    )
+    );
+    apply_manifest_metadata(&mut result, entry);
+    result
 }
 
 fn internal_failure(entry: &ManifestEntry) -> FileMetrics {
@@ -320,13 +337,20 @@ fn internal_failure(entry: &ManifestEntry) -> FileMetrics {
         "wax harness worker panicked",
         None,
     );
-    compare(
+    let mut result = compare(
         entry.id.clone(),
         entry.path.clone(),
         entry.sha256.clone(),
         &wax,
         &sheetjs,
-    )
+    );
+    apply_manifest_metadata(&mut result, entry);
+    result
+}
+
+fn apply_manifest_metadata(result: &mut FileMetrics, entry: &ManifestEntry) {
+    result.ext = entry.ext.to_ascii_lowercase();
+    result.private = entry.private;
 }
 
 fn invoke(
@@ -484,7 +508,7 @@ fn crash_code(status: &ExitStatus) -> &'static str {
 }
 
 fn write_json_atomic(path: &Path, value: &impl serde::Serialize) -> Result<()> {
-    let mut bytes = serde_json::to_vec_pretty(value).context("failed to render scoreboard JSON")?;
+    let mut bytes = serde_json::to_vec_pretty(value).context("failed to render JSON report")?;
     bytes.push(b'\n');
     write_bytes_atomic(path, &bytes)
 }

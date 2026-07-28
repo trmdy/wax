@@ -42,12 +42,14 @@ fn main() -> Result<()> {
     );
     let report = run(config)?;
     eprintln!(
-        "wax harness: attempted {}, skipped {}; wrote {}, {}, and {}",
+        "wax harness: attempted {}, skipped {}; wrote {}, {}, {}, {}, and {}",
         report.scoreboard.files_attempted,
         report.scoreboard.files_skipped,
         report.results_path.display(),
         report.scoreboard_json_path.display(),
-        report.scoreboard_markdown_path.display()
+        report.scoreboard_markdown_path.display(),
+        report.format_coverage_path.display(),
+        report.triage_path.display()
     );
     Ok(())
 }

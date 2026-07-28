@@ -1,8 +1,16 @@
 use std::fmt::Write;
 
 use crate::aggregate::{RatioMetric, Scoreboard};
+use crate::formats::FormatCoverageReport;
 
 pub fn render_markdown(scoreboard: &Scoreboard) -> String {
+    render_markdown_with_formats(scoreboard, None)
+}
+
+pub fn render_markdown_with_formats(
+    scoreboard: &Scoreboard,
+    format_coverage: Option<&FormatCoverageReport>,
+) -> String {
     let metrics = &scoreboard.metrics;
     let mut output = String::new();
     writeln!(output, "# wax compatibility scoreboard\n").unwrap();
@@ -34,6 +42,13 @@ pub fn render_markdown(scoreboard: &Scoreboard) -> String {
         "| display-string coverage % | {} | {} |",
         ratio(&metrics.display_string_coverage.wax),
         ratio(&metrics.display_string_coverage.sheetjs)
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "| display-string match % | {} | {} |",
+        ratio(&metrics.display_string_match),
+        baseline(&metrics.display_string_match)
     )
     .unwrap();
     writeln!(
@@ -78,7 +93,81 @@ pub fn render_markdown(scoreboard: &Scoreboard) -> String {
     )
     .unwrap();
     writeln!(output, "| window latency | n/a | n/a |").unwrap();
+    render_extensions(&mut output, scoreboard);
+    if let Some(format_coverage) = format_coverage {
+        render_formats(&mut output, format_coverage);
+    }
     output
+}
+
+fn render_extensions(output: &mut String, scoreboard: &Scoreboard) {
+    writeln!(output, "\n## Per-extension compatibility\n").unwrap();
+    writeln!(output, "The `xlsx` row is the binding W2 reader gate.\n").unwrap();
+    if scoreboard.metrics.per_extension.is_empty() {
+        writeln!(output, "No extension data was observed.").unwrap();
+        return;
+    }
+
+    writeln!(
+        output,
+        "| Extension | Files attempted | wax opened | SheetJS opened | Cell-value match |"
+    )
+    .unwrap();
+    writeln!(output, "| --- | ---: | ---: | ---: | ---: |").unwrap();
+    for (extension, metrics) in &scoreboard.metrics.per_extension {
+        let label = if extension == "xlsx" {
+            "<code>xlsx</code> (W2 gate)".to_owned()
+        } else {
+            inline_code(extension)
+        };
+        writeln!(
+            output,
+            "| {} | {} | {} | {} | {} |",
+            label,
+            metrics.files_attempted,
+            ratio(&metrics.files_opened.wax),
+            ratio(&metrics.files_opened.sheetjs),
+            ratio(&metrics.cell_value_match)
+        )
+        .unwrap();
+    }
+}
+
+fn render_formats(output: &mut String, report: &FormatCoverageReport) {
+    writeln!(output, "\n## Top format-code display compatibility\n").unwrap();
+    if report.formats.is_empty() {
+        writeln!(output, "No non-General oracle format codes were observed.").unwrap();
+        return;
+    }
+
+    let ranking = if report.joined_corpus_formats {
+        "corpus-wide cell count from `harness/formats/corpus-formats.json`"
+    } else {
+        "cell count observed in this run (corpus format ranking was unavailable)"
+    };
+    writeln!(output, "Top 20 ranked by {ranking}.\n").unwrap();
+    writeln!(
+        output,
+        "| Format code | Oracle cells (run / corpus) | wax display coverage | Display match |"
+    )
+    .unwrap();
+    writeln!(output, "| --- | ---: | ---: | ---: |").unwrap();
+    for format in report.formats.iter().take(20) {
+        let corpus_cells = format
+            .corpus_cell_count
+            .map(|count| count.to_string())
+            .unwrap_or_else(|| "n/a".to_owned());
+        writeln!(
+            output,
+            "| {} | {} / {} | {} | {} |",
+            inline_code(&format.code),
+            format.cell_count,
+            corpus_cells,
+            ratio(&format.wax_display_coverage),
+            ratio(&format.display_string_match)
+        )
+        .unwrap();
+    }
 }
 
 fn ratio(metric: &RatioMetric) -> String {
@@ -123,4 +212,14 @@ fn bytes(value: u64) -> String {
     } else {
         format!("{value} B")
     }
+}
+
+fn inline_code(value: &str) -> String {
+    let escaped = value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('|', "&#124;")
+        .replace(['\r', '\n'], " ");
+    format!("<code>{escaped}</code>")
 }
