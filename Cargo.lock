@@ -592,6 +592,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "rust_xlsxwriter"
+version = "0.96.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd1746025420e17b5d62528b930e550e016e857038794d74e169018126ef3d14"
+dependencies = [
+ "zip 7.2.0",
+]
+
+[[package]]
 name = "rustix"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -916,8 +925,13 @@ dependencies = [
 name = "wax-write"
 version = "0.1.0"
 dependencies = [
+ "quick-xml 0.38.4",
+ "rust_xlsxwriter",
+ "tempfile",
  "wax-core",
+ "wax-read",
  "wax-store",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -1012,6 +1026,20 @@ dependencies = [
  "indexmap",
  "memchr",
  "thiserror",
+ "zopfli",
+]
+
+[[package]]
+name = "zip"
+version = "7.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c42e33efc22a0650c311c2ef19115ce232583abbe80850bc8b66509ebef02de0"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap",
+ "memchr",
+ "typed-path",
  "zopfli",
 ]
 
