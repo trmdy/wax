@@ -2,7 +2,7 @@
   "mission": "wax-v1",
   "wave": "W1",
   "coordinator": "CL.661",
-  "updated": "2026-07-27",
+  "updated": "2026-07-28",
   "states": [
     "planned",
     "spawned",
@@ -20,14 +20,15 @@
       "branch": "agent/wax-w1a-scaffold",
       "worktree": ".worktrees/w1a",
       "bee": "wax-w1a",
-      "state": "spawned",
+      "state": "working",
       "owns": [
         "Cargo.toml",
         "Cargo.lock",
         "crates/**",
         "rust-toolchain.toml"
       ],
-      "brief": "docs/briefs/w1a.md"
+      "brief": "docs/briefs/w1a.md",
+      "beeId": "CO.0b12"
     },
     {
       "id": "w1b",
@@ -36,11 +37,12 @@
       "branch": "agent/wax-w1b-corpus",
       "worktree": ".worktrees/w1b",
       "bee": "wax-w1b",
-      "state": "spawned",
+      "state": "working",
       "owns": [
         "corpus/**"
       ],
-      "brief": "docs/briefs/w1b.md"
+      "brief": "docs/briefs/w1b.md",
+      "beeId": "CO.b57e"
     },
     {
       "id": "w1c",
@@ -49,11 +51,12 @@
       "branch": "agent/wax-w1c-oracle",
       "worktree": ".worktrees/w1c",
       "bee": "wax-w1c",
-      "state": "spawned",
+      "state": "working",
       "owns": [
         "harness/oracle/**"
       ],
-      "brief": "docs/briefs/w1c.md"
+      "brief": "docs/briefs/w1c.md",
+      "beeId": "CO.1a67"
     },
     {
       "id": "w1d",
@@ -62,13 +65,14 @@
       "branch": "agent/wax-w1d-harness",
       "worktree": ".worktrees/w1d",
       "bee": "wax-w1d",
-      "state": "spawned",
+      "state": "working",
       "owns": [
         "harness/wax-harness/**",
         "harness/run.sh",
         "harness/adjudications.md"
       ],
-      "brief": "docs/briefs/w1d.md"
+      "brief": "docs/briefs/w1d.md",
+      "beeId": "CO.d086"
     },
     {
       "id": "w1e",
@@ -77,12 +81,14 @@
       "branch": "agent/wax-w1e-ci",
       "worktree": ".worktrees/w1e",
       "bee": "wax-w1e",
-      "state": "spawned",
+      "state": "working",
       "owns": [
         "scripts/**",
         ".github/**"
       ],
-      "brief": "docs/briefs/w1e.md"
+      "brief": "docs/briefs/w1e.md",
+      "beeId": "CO.e92"
     }
-  ]
+  ],
+  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send."
 }
