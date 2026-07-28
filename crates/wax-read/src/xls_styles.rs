@@ -125,7 +125,10 @@ fn parse_sheet_styles(
     let mut pending_string_formula = None;
     let mut records = BiffRecordIter::new(stream);
     while let Some(record) = records.next_record()? {
-        if record.kind != 0x0207 && record.kind != 0x003C {
+        // A string FORMULA may be followed by SHRFMLA (0x04BC), ARRAY
+        // (0x0221), or TABLE (0x0236) before its STRING record; those must
+        // not clear the pending position (MS-XLS 2.4.127).
+        if !matches!(record.kind, 0x0207 | 0x003C | 0x04BC | 0x0221 | 0x0236) {
             pending_string_formula = None;
         }
         match record.kind {
@@ -370,6 +373,38 @@ mod tests {
             .copied()
             .collect::<HashSet<_>>();
         assert_eq!(cells, HashSet::from([(2, 3), (4, 5)]));
+    }
+
+    #[test]
+    fn shared_formula_records_between_formula_and_string_keep_the_pending_cache() {
+        let mut global = Vec::new();
+        push_record(&mut global, 0x0809, &[0x00, 0x06, 0x05, 0x00]);
+        let bound_sheet_start = global.len();
+        push_record(&mut global, 0x0085, &[0; 8]);
+        push_record(&mut global, 0x000A, &[]);
+
+        let sheet_offset = global.len() as u32;
+        global[bound_sheet_start + 4..bound_sheet_start + 8]
+            .copy_from_slice(&sheet_offset.to_le_bytes());
+        push_record(&mut global, 0x0809, &[0x00, 0x06, 0x10, 0x00]);
+
+        // FORMULA with the string sentinel, then an interposed SHRFMLA
+        // (MS-XLS allows SHRFMLA/ARRAY/TABLE before the STRING record),
+        // then the empty STRING cache.
+        let mut deferred = vec![7, 0, 2, 0, 0, 0];
+        deferred.extend_from_slice(&[0x00, 0, 0, 0, 0, 0, 0xFF, 0xFF]);
+        deferred.extend_from_slice(&[0; 6]);
+        push_record(&mut global, 0x0006, &deferred);
+        push_record(&mut global, 0x04BC, &[0; 10]);
+        push_record(&mut global, 0x0207, &[0, 0, 0]);
+        push_record(&mut global, 0x000A, &[]);
+
+        let supplement = parse_workbook_stream(&global).unwrap();
+        let cells = supplement
+            .empty_formula_cells(0)
+            .copied()
+            .collect::<HashSet<_>>();
+        assert_eq!(cells, HashSet::from([(7, 2)]));
     }
 
     #[test]

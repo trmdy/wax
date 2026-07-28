@@ -444,7 +444,7 @@ fn read_xls(
         let formulas = workbook
             .worksheet_formula(&metadata.name)
             .map_err(|error| container_error(WorkbookKind::Xls, error))?;
-        let (mut records, rows, cols) = range_records(&values, &formulas);
+        let (mut records, rows, cols) = range_records(&values, &formulas, true);
         for &position in supplement.empty_formula_cells(index) {
             let candidate = records.entry(position).or_default();
             if matches!(candidate.value, Data::Empty) {
@@ -494,7 +494,9 @@ fn read_ods(
         let formulas = workbook
             .worksheet_formula(&metadata.name)
             .map_err(|error| container_error(WorkbookKind::Ods, error))?;
-        let (records, rows, cols) = range_records(&values, &formulas);
+        // ODS has no style supplement to restore empty cached strings, so
+        // they must survive the values pass here.
+        let (records, rows, cols) = range_records(&values, &formulas, false);
         sheets.push(finish_sheet(
             SheetDraft {
                 name: &metadata.name,
@@ -525,6 +527,7 @@ struct Candidate {
 fn range_records(
     values: &Range<Data>,
     formulas: &Range<String>,
+    skip_empty_strings: bool,
 ) -> (BTreeMap<(u32, u32), Candidate>, u32, u32) {
     let mut records = BTreeMap::<(u32, u32), Candidate>::new();
     let value_start = values.start().unwrap_or((0, 0));
@@ -533,7 +536,7 @@ fn range_records(
             value_start.0.saturating_add(row as u32),
             value_start.1.saturating_add(col as u32),
         );
-        if !matches!(value, Data::String(text) if text.is_empty()) {
+        if !(skip_empty_strings && matches!(value, Data::String(text) if text.is_empty())) {
             records.entry(position).or_default().value = value.clone();
         }
     }
@@ -627,8 +630,16 @@ fn normalize_cell(
             )
         }
         Data::DateTime(value) if value.is_datetime() => {
+            // calamine has already typed this cell as a datetime; do not let
+            // a missing/degraded format supplement flip it back to numeric.
+            // Only negative serials downgrade: Excel's date systems cannot
+            // render them as dates, so the number is kept losslessly.
             let serial = value.as_f64();
-            let (cell_type, value) = normalize_number_value(serial, code, epoch_1904);
+            let (cell_type, value) = if serial >= 0.0 {
+                (CellType::D, CellValue::Text(excel_datetime_iso(*value)))
+            } else {
+                (CellType::N, CellValue::Number(serial))
+            };
             (
                 cell_type,
                 Some(value),
@@ -961,7 +972,7 @@ fn container_error(kind: WorkbookKind, error: impl std::fmt::Display) -> ReadFai
     } else if matches!(
         kind,
         WorkbookKind::Xlsx | WorkbookKind::Xlsb | WorkbookKind::Ods
-    ) || matches!(kind, WorkbookKind::Xls) && is_structural_xls_error(&lowercase)
+    ) || (matches!(kind, WorkbookKind::Xls) && is_structural_xls_error(&lowercase))
     {
         ErrorCode::BadZip
     } else {
@@ -2429,5 +2440,27 @@ mod tests {
             normalize_number_value(-12_345.678_9, "mm-dd-yy", false),
             (CellType::N, CellValue::Number(-12_345.678_9))
         );
+    }
+
+    #[test]
+    fn calamine_datetime_typing_survives_a_missing_format_supplement() {
+        // A degraded/absent styles supplement leaves format=None; calamine's
+        // own datetime typing must still win for non-negative serials.
+        let value =
+            calamine::ExcelDateTime::new(25_569.5, calamine::ExcelDateTimeType::DateTime, false);
+        let cell = normalize_cell((0, 0), &Data::DateTime(value), None, None, None, false)
+            .expect("datetime cell");
+        assert_eq!(cell.t, CellType::D);
+        assert_eq!(
+            cell.v,
+            Some(CellValue::Text("1970-01-01T12:00:00".to_owned()))
+        );
+
+        let negative =
+            calamine::ExcelDateTime::new(-1.25, calamine::ExcelDateTimeType::DateTime, false);
+        let cell = normalize_cell((0, 0), &Data::DateTime(negative), None, None, None, false)
+            .expect("negative serial cell");
+        assert_eq!(cell.t, CellType::N);
+        assert_eq!(cell.v, Some(CellValue::Number(-1.25)));
     }
 }
