@@ -6,3 +6,4 @@ node_modules/
 .worktrees/
 .DS_Store
 *.log
+corpus/manifest.local.jsonl

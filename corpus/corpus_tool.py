@@ -85,7 +85,7 @@ SEC_INDEX_URL = (
 )
 SEC_ARCHIVE_ROOT = "https://www.sec.gov/Archives"
 
-SPIKE_SCRIPT = Path("REDACTED-LOCAL-PATH")
+SPIKE_SCRIPT = Path(os.environ.get("WAX_SPIKE_SCRIPT", ""))  # local-only overlay; unset in public checkouts
 
 
 class CorpusError(RuntimeError):

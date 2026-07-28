@@ -87,7 +87,7 @@ gitignored `corpus/fetch.log`. The public payload budget is capped at 4 GiB.
 
 - Collection id: `spike-local`
 - Source list:
-  `REDACTED-LOCAL-PATH
+  a local, uncommitted spike overlay on the operator machine (`corpus/manifest.local.jsonl`, gitignored; regenerated via `WAX_SPIKE_SCRIPT`)
 - Licence/status: private, local-only accounting and synthetic spike inputs
 - Method: parse the static `FILES` list without executing it; include only
   paths that exist and are readable within a five-second hash deadline,
