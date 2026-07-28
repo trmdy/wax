@@ -26,6 +26,10 @@ struct Arguments {
     #[arg(long)]
     timeout_ms: Option<u64>,
 
+    /// Skip the wax serve protocol pass.
+    #[arg(long)]
+    no_serve: bool,
+
     #[arg(long, default_value = ".", hide = true)]
     repo_root: PathBuf,
 }
@@ -39,6 +43,7 @@ fn main() -> Result<()> {
         arguments.jobs,
         arguments.max_cells,
         arguments.timeout_ms,
+        !arguments.no_serve,
     );
     let report = run(config)?;
     eprintln!(

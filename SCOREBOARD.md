@@ -7,6 +7,7 @@ Corpus: 2048 attempted, 0 skipped.
 | Metric | wax | SheetJS baseline |
 | --- | ---: | ---: |
 | files opened % | 95.90% (1964/2048) | 97.17% (1990/2048) |
+| open-via-serve % | n/a (serve unavailable) | n/a |
 | cell-value match % | 92.12% (2681418/2910785) | reference |
 | display-string coverage % | 99.90% (2876829/2879603) | 99.99% (2922256/2922657) |
 | display-string match % | 76.15% (2190072/2875970) | reference |
@@ -15,19 +16,20 @@ Corpus: 2048 attempted, 0 skipped.
 | p50 parse time | 0 ms | 8 ms |
 | p95 parse time | 5 ms | 96 ms |
 | peak RSS (p50 / max) | 2.50 MiB / 1.00 GiB | 88.97 MiB / 1.19 GiB |
-| window latency | n/a | n/a |
+| serve peak RSS (p50 / max) | n/a (serve unavailable) | n/a |
+| window latency (p50 / p95) | n/a (serve unavailable) | n/a |
 
 ## Per-extension compatibility
 
 The `xlsx` row is the binding W2 reader gate.
 
-| Extension | Files attempted | wax opened | SheetJS opened | Cell-value match |
-| --- | ---: | ---: | ---: | ---: |
-| <code>ods</code> | 37 | 91.89% (34/37) | 91.89% (34/37) | 99.38% (31617/31813) |
-| <code>xls</code> | 885 | 96.38% (853/885) | 96.95% (858/885) | 98.11% (1347464/1373463) |
-| <code>xlsb</code> | 456 | 98.03% (447/456) | 99.34% (453/456) | 73.89% (557991/755203) |
-| <code>xlsm</code> | 32 | 90.62% (29/32) | 100.00% (32/32) | 92.25% (34879/37808) |
-| <code>xlsx</code> (W2 gate) | 638 | 94.20% (601/638) | 96.08% (613/638) | 99.57% (709467/712498) |
+| Extension | Files attempted | wax opened | SheetJS opened | Cell-value match | Formula-text fidelity | Cached-result fidelity |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| <code>ods</code> | 37 | 91.89% (34/37) | 91.89% (34/37) | 99.38% (31617/31813) | n/a | n/a |
+| <code>xls</code> | 885 | 96.38% (853/885) | 96.95% (858/885) | 98.11% (1347464/1373463) | n/a | n/a |
+| <code>xlsb</code> | 456 | 98.03% (447/456) | 99.34% (453/456) | 73.89% (557991/755203) | n/a | n/a |
+| <code>xlsm</code> | 32 | 90.62% (29/32) | 100.00% (32/32) | 92.25% (34879/37808) | n/a | n/a |
+| <code>xlsx</code> (W2 gate) | 638 | 94.20% (601/638) | 96.08% (613/638) | 99.57% (709467/712498) | n/a | n/a |
 
 ## Top format-code display compatibility
 

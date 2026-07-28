@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{Cell, CellType, DumpDocument, DumpError, Tool};
+use crate::serve::ServeFileMetrics;
 
 #[derive(Debug, Clone)]
 pub struct ToolObservation {
@@ -115,6 +116,8 @@ pub struct FileMetrics {
     pub private: bool,
     pub wax: ToolSummary,
     pub sheetjs: ToolSummary,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serve: Option<ServeFileMetrics>,
     pub cell_value_match: CountMetric,
     pub wax_display_coverage: CoverageMetric,
     pub sheetjs_display_coverage: CoverageMetric,
@@ -154,6 +157,7 @@ pub fn compare(
         private: false,
         wax: wax_summary,
         sheetjs: sheetjs_summary,
+        serve: None,
         cell_value_match: CountMetric::default(),
         wax_display_coverage: coverage(wax.document.as_ref()),
         sheetjs_display_coverage: coverage(sheetjs.document.as_ref()),

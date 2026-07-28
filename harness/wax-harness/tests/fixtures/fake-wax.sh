@@ -1,6 +1,11 @@
 #!/bin/sh
 set -eu
 
+if [ "${1:-}" = "serve" ]; then
+  echo "error: unrecognized subcommand 'serve'" >&2
+  exit 2
+fi
+
 file=$3
 name=${file##*/}
 

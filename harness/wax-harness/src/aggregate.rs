@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::compare::{CountMetric, CoverageMetric, FileMetrics};
+use crate::serve::ServeAvailability;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +28,14 @@ pub struct AggregateMetrics {
     pub parse_time_ms: ToolPercentileMetrics,
     pub peak_rss_bytes: ToolRssMetrics,
     pub window_latency_ms: ToolNullableMetrics,
+    #[serde(default)]
+    pub open_via_serve: Option<RatioMetric>,
+    #[serde(default)]
+    pub window_latency_percentiles_ms: FloatPercentileMetric,
+    #[serde(default)]
+    pub serve_peak_rss_bytes: RssMetric,
+    #[serde(default)]
+    pub serve_status: ServeStatusMetric,
     #[serde(default)]
     pub per_extension: BTreeMap<String, ExtensionMetrics>,
 }
@@ -56,6 +65,10 @@ pub struct ExtensionMetrics {
     pub files_attempted: u64,
     pub files_opened: OpenedMetrics,
     pub cell_value_match: RatioMetric,
+    #[serde(default)]
+    pub formula_fidelity: RatioMetric,
+    #[serde(default)]
+    pub cached_result_fidelity: RatioMetric,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,13 +83,19 @@ pub struct PercentileMetric {
     pub p95: Option<u64>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FloatPercentileMetric {
+    pub p50: Option<f64>,
+    pub p95: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolRssMetrics {
     pub wax: RssMetric,
     pub sheetjs: RssMetric,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RssMetric {
     pub p50: Option<u64>,
     pub max: Option<u64>,
@@ -88,10 +107,41 @@ pub struct ToolNullableMetrics {
     pub sheetjs: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServeStatusMetric {
+    pub status: String,
+    pub reason: Option<String>,
+}
+
+impl Default for ServeStatusMetric {
+    fn default() -> Self {
+        Self {
+            status: "unavailable".to_owned(),
+            reason: None,
+        }
+    }
+}
+
 pub fn aggregate(
     results: &[FileMetrics],
     files_skipped: u64,
     generated_at: impl Into<String>,
+) -> Scoreboard {
+    let availability = if results.iter().any(|result| result.serve.is_some()) {
+        ServeAvailability::Available
+    } else {
+        ServeAvailability::Unavailable {
+            reason: "serve metrics were not collected".to_owned(),
+        }
+    };
+    aggregate_with_serve(results, files_skipped, generated_at, &availability)
+}
+
+pub fn aggregate_with_serve(
+    results: &[FileMetrics],
+    files_skipped: u64,
+    generated_at: impl Into<String>,
+    serve_availability: &ServeAvailability,
 ) -> Scoreboard {
     let attempted = results.len() as u64;
     let wax_opened = results.iter().filter(|result| result.wax.ok).count() as u64;
@@ -124,6 +174,24 @@ pub fn aggregate(
         .iter()
         .filter_map(|result| result.sheetjs.peak_rss_bytes)
         .collect();
+    let serve_window_latencies: Vec<_> = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .flat_map(|serve| &serve.requests)
+        .filter(|request| request.op == "window")
+        .map(|request| request.wall_ms)
+        .collect();
+    let serve_rss: Vec<_> = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .filter_map(|serve| serve.peak_rss_bytes)
+        .collect();
+    let serve_opened = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .filter(|serve| serve.open_ok)
+        .count() as u64;
+    let serve_was_available = serve_availability.is_available();
 
     Scoreboard {
         schema: 1,
@@ -154,6 +222,24 @@ pub fn aggregate(
             window_latency_ms: ToolNullableMetrics {
                 wax: None,
                 sheetjs: None,
+            },
+            open_via_serve: serve_was_available.then(|| RatioMetric::new(serve_opened, attempted)),
+            window_latency_percentiles_ms: if serve_was_available {
+                float_percentiles(&serve_window_latencies)
+            } else {
+                FloatPercentileMetric::default()
+            },
+            serve_peak_rss_bytes: if serve_was_available {
+                rss_metrics(&serve_rss)
+            } else {
+                RssMetric {
+                    p50: None,
+                    max: None,
+                }
+            },
+            serve_status: ServeStatusMetric {
+                status: serve_availability.status().to_owned(),
+                reason: serve_availability.reason().map(str::to_owned),
             },
             per_extension: per_extension(results),
         },
@@ -196,6 +282,9 @@ fn per_extension(results: &[FileMetrics]) -> BTreeMap<String, ExtensionMetrics> 
             let wax_opened = results.iter().filter(|result| result.wax.ok).count() as u64;
             let sheetjs_opened = results.iter().filter(|result| result.sheetjs.ok).count() as u64;
             let cell_value_match = sum_counts(results.iter().map(|result| result.cell_value_match));
+            let formula_fidelity = sum_counts(results.iter().map(|result| result.formula_fidelity));
+            let cached_result_fidelity =
+                sum_counts(results.iter().map(|result| result.cached_result_fidelity));
             (
                 extension,
                 ExtensionMetrics {
@@ -205,6 +294,8 @@ fn per_extension(results: &[FileMetrics]) -> BTreeMap<String, ExtensionMetrics> 
                         sheetjs: RatioMetric::new(sheetjs_opened, attempted),
                     },
                     cell_value_match: RatioMetric::from_count(cell_value_match),
+                    formula_fidelity: RatioMetric::from_count(formula_fidelity),
+                    cached_result_fidelity: RatioMetric::from_count(cached_result_fidelity),
                 },
             )
         })
@@ -234,6 +325,13 @@ fn percentiles(values: &[u64]) -> PercentileMetric {
     }
 }
 
+fn float_percentiles(values: &[f64]) -> FloatPercentileMetric {
+    FloatPercentileMetric {
+        p50: nearest_rank_float(values, 50),
+        p95: nearest_rank_float(values, 95),
+    }
+}
+
 fn rss_metrics(values: &[u64]) -> RssMetric {
     RssMetric {
         p50: nearest_rank(values, 50),
@@ -251,10 +349,21 @@ fn nearest_rank(values: &[u64], percentile: usize) -> Option<u64> {
     Some(values[rank.saturating_sub(1)])
 }
 
+fn nearest_rank_float(values: &[f64], percentile: usize) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut values = values.to_vec();
+    values.sort_by(f64::total_cmp);
+    let rank = (percentile * values.len()).div_ceil(100);
+    Some(values[rank.saturating_sub(1)])
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{aggregate, nearest_rank};
+    use super::{aggregate, aggregate_with_serve, nearest_rank, nearest_rank_float};
     use crate::compare::{CountMetric, CoverageMetric, FileMetrics, ToolSummary};
+    use crate::serve::{ServeAvailability, ServeFileMetrics, ServeRequestMetric};
 
     fn file(
         ext: &str,
@@ -278,6 +387,7 @@ mod tests {
             private: false,
             wax: summary(wax_ok),
             sheetjs: summary(sheetjs_ok),
+            serve: None,
             cell_value_match,
             wax_display_coverage: CoverageMetric::default(),
             sheetjs_display_coverage: CoverageMetric::default(),
@@ -297,6 +407,10 @@ mod tests {
         assert_eq!(nearest_rank(&values, 50), Some(20));
         assert_eq!(nearest_rank(&values, 95), Some(40));
         assert_eq!(nearest_rank(&[], 50), None);
+        let float_values = [4.5, 1.25, 3.75, 2.5];
+        assert_eq!(nearest_rank_float(&float_values, 50), Some(2.5));
+        assert_eq!(nearest_rank_float(&float_values, 95), Some(4.5));
+        assert_eq!(nearest_rank_float(&[], 50), None);
     }
 
     #[test]
@@ -315,7 +429,7 @@ mod tests {
 
     #[test]
     fn aggregates_display_match_and_manifest_extensions() {
-        let results = vec![
+        let mut results = vec![
             file(
                 "xlsx",
                 true,
@@ -350,6 +464,14 @@ mod tests {
                 },
             ),
         ];
+        results[0].formula_fidelity = CountMetric {
+            matched: 99,
+            total: 100,
+        };
+        results[0].cached_result_fidelity = CountMetric {
+            matched: 80,
+            total: 100,
+        };
 
         let scoreboard = aggregate(&results, 0, "2026-07-28T00:00:00Z");
 
@@ -361,6 +483,79 @@ mod tests {
         assert_eq!(xlsx.files_opened.sheetjs.matched, 2);
         assert_eq!(xlsx.cell_value_match.matched, 8);
         assert_eq!(xlsx.cell_value_match.total, 10);
+        assert_eq!(xlsx.formula_fidelity.matched, 99);
+        assert_eq!(xlsx.formula_fidelity.total, 100);
+        assert_eq!(xlsx.cached_result_fidelity.matched, 80);
+        assert_eq!(xlsx.cached_result_fidelity.total, 100);
         assert_eq!(scoreboard.metrics.per_extension["ods"].files_attempted, 1);
+    }
+
+    #[test]
+    fn aggregates_serve_opens_window_latencies_and_rss() {
+        let mut results = vec![
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+        ];
+        results[0].serve = Some(ServeFileMetrics {
+            open_ok: true,
+            requests: vec![
+                request(1, "version", 50.0),
+                request(2, "window", 4.5),
+                request(3, "window", 1.25),
+            ],
+            peak_rss_bytes: Some(100),
+            ..ServeFileMetrics::default()
+        });
+        results[1].serve = Some(ServeFileMetrics {
+            open_ok: false,
+            requests: vec![request(1, "window", 3.75), request(2, "window", 2.5)],
+            peak_rss_bytes: Some(200),
+            ..ServeFileMetrics::default()
+        });
+
+        let scoreboard = aggregate_with_serve(
+            &results,
+            0,
+            "2026-07-28T00:00:00Z",
+            &ServeAvailability::Available,
+        );
+
+        assert_eq!(
+            scoreboard.metrics.open_via_serve.as_ref().unwrap().matched,
+            1
+        );
+        assert_eq!(scoreboard.metrics.open_via_serve.as_ref().unwrap().total, 2);
+        assert_eq!(
+            scoreboard.metrics.window_latency_percentiles_ms.p50,
+            Some(2.5)
+        );
+        assert_eq!(
+            scoreboard.metrics.window_latency_percentiles_ms.p95,
+            Some(4.5)
+        );
+        assert_eq!(scoreboard.metrics.serve_peak_rss_bytes.p50, Some(100));
+        assert_eq!(scoreboard.metrics.serve_peak_rss_bytes.max, Some(200));
+    }
+
+    fn request(id: u64, op: &str, wall_ms: f64) -> ServeRequestMetric {
+        ServeRequestMetric {
+            id,
+            op: op.to_owned(),
+            wall_ms,
+            ok: true,
+            error: None,
+        }
     }
 }

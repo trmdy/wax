@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -13,16 +14,20 @@ use chrono::{SecondsFormat, Utc};
 use serde::Deserialize;
 use wait_timeout::ChildExt;
 
-use crate::aggregate::{aggregate, Scoreboard};
+use crate::aggregate::{aggregate_with_serve, Scoreboard};
 use crate::compare::{compare, FileMetrics, ToolObservation};
 use crate::formats::{aggregate_format_coverage, load_corpus_format_index};
 use crate::model::{DumpDocument, ExpectedDump, Tool};
 use crate::render::render_markdown_with_formats;
+use crate::serve::{
+    detect_serve, run_serve_file, ServeAvailability, ServeFileConfig, ServeFileMetrics,
+};
 use crate::triage::render_triage;
 
 const DEFAULT_MAX_CELLS: u64 = 200_000;
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const MAX_CAPTURE_BYTES: u64 = 256 * 1024 * 1024;
+const EXPORT_SMOKE_FILES: usize = 50;
 
 #[derive(Debug, Clone)]
 pub struct RunnerConfig {
@@ -32,6 +37,7 @@ pub struct RunnerConfig {
     pub jobs: usize,
     pub max_cells: u64,
     pub timeout_ms: u64,
+    pub serve_enabled: bool,
     pub wax_bin: PathBuf,
     pub node_bin: PathBuf,
     pub oracle_script: PathBuf,
@@ -81,6 +87,22 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
     let before_skip = entries.len();
     entries.retain(|entry| !should_skip_private(entry, &config.repo_root));
     let skipped = (before_skip - entries.len()) as u64;
+    let serve_availability = if config.serve_enabled {
+        detect_serve(
+            &config.wax_bin,
+            &config.repo_root,
+            Duration::from_millis(config.timeout_ms),
+        )
+    } else {
+        ServeAvailability::Disabled
+    };
+    let serve_available = serve_availability.is_available();
+    let export_smoke_ids: HashSet<_> = entries
+        .iter()
+        .filter(|entry| entry.ext.eq_ignore_ascii_case("xlsx"))
+        .take(EXPORT_SMOKE_FILES)
+        .map(|entry| entry.id.clone())
+        .collect();
 
     let harness_dir = config.repo_root.join("harness");
     fs::create_dir_all(&harness_dir)
@@ -106,13 +128,17 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
             let entries = Arc::clone(&entries);
             let next = Arc::clone(&next);
             let sender = sender.clone();
+            let export_smoke_ids = &export_smoke_ids;
             scope.spawn(move || loop {
                 let index = next.fetch_add(1, Ordering::Relaxed);
                 let Some(entry) = entries.get(index) else {
                     break;
                 };
-                let result = std::panic::catch_unwind(|| process_entry(entry, &config))
-                    .unwrap_or_else(|_| internal_failure(entry));
+                let export_smoke = export_smoke_ids.contains(&entry.id);
+                let result = std::panic::catch_unwind(|| {
+                    process_entry(entry, &config, serve_available, export_smoke)
+                })
+                .unwrap_or_else(|_| internal_failure(entry));
                 if sender.send(result).is_err() {
                     break;
                 }
@@ -137,7 +163,8 @@ pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
     results.sort_by(|left, right| left.id.cmp(&right.id));
 
     let generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-    let scoreboard = aggregate(&results, skipped, generated_at.clone());
+    let scoreboard =
+        aggregate_with_serve(&results, skipped, generated_at.clone(), &serve_availability);
     let corpus_formats =
         load_corpus_format_index(&config.repo_root.join("harness/formats/corpus-formats.json"))?;
     let format_coverage =
@@ -169,7 +196,15 @@ impl RunnerConfig {
         jobs: Option<usize>,
         max_cells: Option<u64>,
         timeout_ms: Option<u64>,
+        serve_enabled: bool,
     ) -> Self {
+        let repo_root = if repo_root.is_absolute() {
+            repo_root
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(repo_root)
+        };
         let relative_to_root = |path: PathBuf| {
             if path.is_absolute() {
                 path
@@ -192,6 +227,7 @@ impl RunnerConfig {
             jobs: jobs.unwrap_or_else(default_jobs),
             max_cells: max_cells.unwrap_or(DEFAULT_MAX_CELLS),
             timeout_ms: timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS),
+            serve_enabled,
             wax_bin: relative_to_root(wax_bin),
             node_bin,
             oracle_script: relative_to_root(oracle_script),
@@ -281,7 +317,12 @@ fn should_skip_private(entry: &ManifestEntry, repo_root: &Path) -> bool {
     !resolved.exists()
 }
 
-fn process_entry(entry: &ManifestEntry, config: &RunnerConfig) -> FileMetrics {
+fn process_entry(
+    entry: &ManifestEntry,
+    config: &RunnerConfig,
+    serve_available: bool,
+    export_smoke: bool,
+) -> FileMetrics {
     let wax = invoke(
         Tool::Wax,
         &config.wax_bin,
@@ -321,7 +362,30 @@ fn process_entry(entry: &ManifestEntry, config: &RunnerConfig) -> FileMetrics {
         &sheetjs,
     );
     apply_manifest_metadata(&mut result, entry);
+    if serve_available {
+        result.serve = Some(run_serve_entry(entry, config, export_smoke));
+    }
     result
+}
+
+fn run_serve_entry(
+    entry: &ManifestEntry,
+    config: &RunnerConfig,
+    export_smoke: bool,
+) -> ServeFileMetrics {
+    let path = Path::new(&entry.path);
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        config.repo_root.join(path)
+    };
+    run_serve_file(ServeFileConfig {
+        wax_bin: &config.wax_bin,
+        repo_root: &config.repo_root,
+        file: &path,
+        timeout: Duration::from_millis(config.timeout_ms),
+        export_smoke,
+    })
 }
 
 fn internal_failure(entry: &ManifestEntry) -> FileMetrics {

@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::Path;
+
 use wax_harness::{render_markdown_with_formats, FormatCoverageReport, Scoreboard};
 
 #[test]
@@ -29,6 +32,10 @@ fn scoreboard_markdown_matches_golden_file() {
                 "sheetjs": {"p50": 200, "max": 220}
             },
             "windowLatencyMs": {"wax": null, "sheetjs": null},
+            "openViaServe": {"matched": 2, "total": 3, "percent": 66.6666666667},
+            "windowLatencyPercentilesMs": {"p50": 0.25, "p95": 1.75},
+            "servePeakRssBytes": {"p50": 110, "max": 130},
+            "serveStatus": {"status": "available", "reason": null},
             "perExtension": {
                 "ods": {
                     "filesAttempted": 1,
@@ -36,7 +43,9 @@ fn scoreboard_markdown_matches_golden_file() {
                         "wax": {"matched": 0, "total": 1, "percent": 0.0},
                         "sheetjs": {"matched": 1, "total": 1, "percent": 100.0}
                     },
-                    "cellValueMatch": {"matched": 0, "total": 0, "percent": null}
+                    "cellValueMatch": {"matched": 0, "total": 0, "percent": null},
+                    "formulaFidelity": {"matched": 0, "total": 0, "percent": null},
+                    "cachedResultFidelity": {"matched": 0, "total": 0, "percent": null}
                 },
                 "xlsx": {
                     "filesAttempted": 2,
@@ -44,7 +53,9 @@ fn scoreboard_markdown_matches_golden_file() {
                         "wax": {"matched": 2, "total": 2, "percent": 100.0},
                         "sheetjs": {"matched": 2, "total": 2, "percent": 100.0}
                     },
-                    "cellValueMatch": {"matched": 1, "total": 2, "percent": 50.0}
+                    "cellValueMatch": {"matched": 1, "total": 2, "percent": 50.0},
+                    "formulaFidelity": {"matched": 1, "total": 1, "percent": 100.0},
+                    "cachedResultFidelity": {"matched": 0, "total": 1, "percent": 0.0}
                 }
             }
         }
@@ -77,5 +88,21 @@ fn scoreboard_markdown_matches_golden_file() {
     assert_eq!(
         render_markdown_with_formats(&scoreboard, Some(&formats)),
         include_str!("fixtures/scoreboard.golden.md")
+    );
+}
+
+#[test]
+fn committed_scoreboard_snapshot_matches_its_json_sources() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let scoreboard: Scoreboard =
+        serde_json::from_slice(&fs::read(repo_root.join("harness/scoreboard.json")).unwrap())
+            .unwrap();
+    let formats: FormatCoverageReport =
+        serde_json::from_slice(&fs::read(repo_root.join("harness/format-coverage.json")).unwrap())
+            .unwrap();
+
+    assert_eq!(
+        render_markdown_with_formats(&scoreboard, Some(&formats)),
+        fs::read_to_string(repo_root.join("SCOREBOARD.md")).unwrap()
     );
 }
