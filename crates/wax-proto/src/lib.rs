@@ -12,6 +12,10 @@ pub enum ErrorCode {
     TooLarge,
     Timeout,
     Internal,
+    Bomb,
+    BadRequest,
+    BadHandle,
+    Cancelled,
 }
 
 impl ErrorCode {
@@ -22,6 +26,10 @@ impl ErrorCode {
             Self::TooLarge => "too_large",
             Self::Timeout => "timeout",
             Self::Internal => "internal",
+            Self::Bomb => "bomb",
+            Self::BadRequest => "bad_request",
+            Self::BadHandle => "bad_handle",
+            Self::Cancelled => "cancelled",
         }
     }
 }
@@ -44,6 +52,10 @@ mod tests {
             (ErrorCode::TooLarge, "too_large"),
             (ErrorCode::Timeout, "timeout"),
             (ErrorCode::Internal, "internal"),
+            (ErrorCode::Bomb, "bomb"),
+            (ErrorCode::BadRequest, "bad_request"),
+            (ErrorCode::BadHandle, "bad_handle"),
+            (ErrorCode::Cancelled, "cancelled"),
         ];
 
         for (code, expected) in codes {

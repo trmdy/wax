@@ -1,7 +1,7 @@
 {
   "mission": "wax-v1",
-  "wave": "W2",
-  "coordinator": "CL.988e",
+  "wave": "W3",
+  "coordinator": "CL.d73",
   "updated": "2026-07-28",
   "states": [
     "planned",
@@ -134,8 +134,87 @@
       ],
       "brief": "docs/briefs/w2c.md",
       "beeId": "CO.f0b"
+    },
+    {
+      "id": "w3a",
+      "slug": "proto",
+      "title": "NDJSON stdio protocol server (proto v0: open/meta/window/export/close, cancel, timeouts)",
+      "branch": "agent/wax-w3a-proto",
+      "worktree": ".worktrees/w3a",
+      "bee": "wax-w3a",
+      "state": "planned",
+      "owns": [
+        "crates/wax-proto/**",
+        "crates/wax-cli/**"
+      ],
+      "brief": "docs/briefs/w3a.md",
+      "beeId": null
+    },
+    {
+      "id": "w3b",
+      "slug": "store",
+      "title": "Columnar windowed store (typed columns + string table, O(window), memory bound)",
+      "branch": "agent/wax-w3b-store",
+      "worktree": ".worktrees/w3b",
+      "bee": "wax-w3b",
+      "state": "planned",
+      "owns": [
+        "crates/wax-store/**",
+        "crates/wax-core/** (additive only)"
+      ],
+      "brief": "docs/briefs/w3b.md",
+      "beeId": null
+    },
+    {
+      "id": "w3c",
+      "slug": "safety",
+      "title": "Safety rails (bomb/XML/timeout) + cargo-fuzz targets wired into check.sh/CI",
+      "branch": "agent/wax-w3c-safety",
+      "worktree": ".worktrees/w3c",
+      "bee": "wax-w3c",
+      "state": "planned",
+      "owns": [
+        "crates/wax-read/src/safety.rs",
+        "crates/wax-read/src/lib.rs (hooks only)",
+        "fuzz/**",
+        "scripts/**",
+        ".github/**"
+      ],
+      "brief": "docs/briefs/w3c.md",
+      "beeId": null
+    },
+    {
+      "id": "w3d",
+      "slug": "harness",
+      "title": "Harness protocol client (serve end-to-end) + window-latency/serve-RSS/per-ext formula rows",
+      "branch": "agent/wax-w3d-harness",
+      "worktree": ".worktrees/w3d",
+      "bee": "wax-w3d",
+      "state": "planned",
+      "owns": [
+        "harness/wax-harness/**",
+        "harness/run.sh"
+      ],
+      "brief": "docs/briefs/w3d.md",
+      "beeId": null
+    },
+    {
+      "id": "w3e",
+      "slug": "reader",
+      "title": "Reader carry-overs (capacity lane): xls/xlsb fmt codes, xlsb values, xlsx open triage",
+      "branch": "agent/wax-w3e-reader",
+      "worktree": ".worktrees/w3e",
+      "bee": "wax-w3e",
+      "state": "planned",
+      "owns": [
+        "crates/wax-read/src/calamine_reader.rs",
+        "crates/wax-read/** (new style modules)",
+        "harness/adjudications.md (append-only)"
+      ],
+      "brief": "docs/briefs/w3e.md",
+      "beeId": null
     }
   ],
   "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest.",
-  "waveStatus": "W2 gate PASSED 2026-07-28: xlsx opens 94.20% (>=90%), xlsx cell-value match 99.57% (>=95%), display coverage 0%->99.90% with corpus format test-set committed (487 codes). Display match: xlsx 97.24%; xls/xlsb lag (74%/58%) from missing container fmt codes -> W3 candidate. All three shards merged + retired. W3 NOT started (awaiting operator go)."
+  "waveStatus": "W3 STARTED 2026-07-28 (operator go carried in coordinator CL.d73's spawn brief). Core: W3A proto server, W3B columnar store, W3C safety+fuzz, W3D harness client + scoreboard rows. W3E reader carry-overs run in the capacity lane only. Coordinator scaffolded the seam on main first: crates/wax-store stub with frozen 5-call API + full v0 ErrorCode list in wax-proto; proto v0 wire spec frozen in docs/w3-contracts.md. Gate: harness client drives open/window/export over stdio against the corpus; real window-latency + serve-RSS scoreboard rows; fuzz targets smoke-clean in check.sh/CI. W4 (writer) does NOT start without a fresh operator go."
 }

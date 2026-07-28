@@ -3,6 +3,7 @@ members = [
     "crates/wax-core",
     "crates/wax-fmt",
     "crates/wax-read",
+    "crates/wax-store",
     "crates/wax-write",
     "crates/wax-proto",
     "crates/wax-cli",

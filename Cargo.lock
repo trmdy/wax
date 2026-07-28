@@ -873,6 +873,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "wax-store"
+version = "0.1.0"
+dependencies = [
+ "wax-core",
+]
+
+[[package]]
 name = "wax-write"
 version = "0.1.0"
 
