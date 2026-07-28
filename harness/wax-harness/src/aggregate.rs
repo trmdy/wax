@@ -94,10 +94,12 @@ pub fn aggregate(
     let wax_wall_times: Vec<_> = results
         .iter()
         .filter_map(|result| result.wax.wall_ms)
+        .map(|ms| ms.round() as u64)
         .collect();
     let sheetjs_wall_times: Vec<_> = results
         .iter()
         .filter_map(|result| result.sheetjs.wall_ms)
+        .map(|ms| ms.round() as u64)
         .collect();
     let wax_rss: Vec<_> = results
         .iter()

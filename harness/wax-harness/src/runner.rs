@@ -64,7 +64,7 @@ struct CapturedProcess {
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     output_too_large: bool,
-    elapsed_ms: u64,
+    elapsed_ms: f64,
 }
 
 pub fn run(config: RunnerConfig) -> Result<RunnerReport> {
@@ -465,8 +465,8 @@ fn diagnostic(stderr: &[u8]) -> String {
     String::from_utf8_lossy(stderr).trim().to_owned()
 }
 
-fn elapsed_ms(started: Instant) -> u64 {
-    started.elapsed().as_millis().min(u64::MAX as u128) as u64
+fn elapsed_ms(started: Instant) -> f64 {
+    started.elapsed().as_secs_f64() * 1000.0
 }
 
 fn crash_code(status: &ExitStatus) -> &'static str {

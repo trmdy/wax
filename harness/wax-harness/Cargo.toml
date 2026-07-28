@@ -15,7 +15,3 @@ wait-timeout = "0.2"
 
 [dev-dependencies]
 tempfile = "3.10"
-
-# W1D is developed in parallel with the root workspace scaffold. The
-# coordinator removes this marker when wiring the crate into that workspace.
-[workspace]

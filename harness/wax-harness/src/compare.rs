@@ -10,7 +10,7 @@ pub struct ToolObservation {
     pub tool: Tool,
     pub document: Option<DumpDocument>,
     pub failure: Option<DumpError>,
-    pub measured_wall_ms: Option<u64>,
+    pub measured_wall_ms: Option<f64>,
 }
 
 impl ToolObservation {
@@ -27,7 +27,7 @@ impl ToolObservation {
         tool: Tool,
         code: impl Into<String>,
         msg: impl Into<String>,
-        measured_wall_ms: Option<u64>,
+        measured_wall_ms: Option<f64>,
     ) -> Self {
         Self {
             tool,
@@ -65,12 +65,12 @@ impl ToolObservation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolSummary {
     pub ok: bool,
     pub error: Option<DumpError>,
-    pub wall_ms: Option<u64>,
+    pub wall_ms: Option<f64>,
     pub peak_rss_bytes: Option<u64>,
     pub truncated: bool,
 }
@@ -87,7 +87,7 @@ pub struct CoverageMetric {
     pub total: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileMetrics {
     pub id: String,

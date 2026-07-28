@@ -5,6 +5,7 @@ members = [
     "crates/wax-write",
     "crates/wax-proto",
     "crates/wax-cli",
+    "harness/wax-harness",
 ]
 resolver = "2"
 

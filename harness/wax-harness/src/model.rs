@@ -62,7 +62,7 @@ pub struct DumpDocument {
     pub sha256: String,
     pub ok: bool,
     pub error: Option<DumpError>,
-    pub wall_ms: u64,
+    pub wall_ms: f64,
     pub peak_rss_bytes: Option<u64>,
     pub truncated: bool,
     pub sheets: Vec<Sheet>,
@@ -384,6 +384,16 @@ mod tests {
         let document = parse(&valid_dump()).unwrap();
         assert!(document.ok);
         assert_eq!(document.sheets[0].cells.len(), 1);
+    }
+
+    #[test]
+    fn parses_fractional_wall_ms() {
+        // The SheetJS oracle reports sub-millisecond precision, e.g. 13.516833.
+        let mut value = valid_dump();
+        value["wallMs"] = json!(13.516833);
+
+        let document = parse(&value).unwrap();
+        assert!((document.wall_ms - 13.516833).abs() < 1e-9);
     }
 
     #[test]
