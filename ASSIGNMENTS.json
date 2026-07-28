@@ -90,5 +90,6 @@
       "beeId": "CO.e92"
     }
   ],
-  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send."
+  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send.",
+  "waveStatus": "W1 gate passed 2026-07-28: harness/run.sh end-to-end on 2048-file corpus, real SCOREBOARD.md committed. All five shards merged; bees retired. W2 not started (awaiting operator go)."
 }

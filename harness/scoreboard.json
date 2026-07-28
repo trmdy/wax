@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-07-28T02:13:21Z",
+  "filesAttempted": 2048,
+  "filesSkipped": 0,
+  "metrics": {
+    "filesOpened": {
+      "wax": {
+        "matched": 597,
+        "total": 2048,
+        "percent": 29.150390625
+      },
+      "sheetjs": {
+        "matched": 1990,
+        "total": 2048,
+        "percent": 97.16796875
+      }
+    },
+    "cellValueMatch": {
+      "matched": 448091,
+      "total": 693364,
+      "percent": 64.62565117312118
+    },
+    "displayStringCoverage": {
+      "wax": {
+        "matched": 0,
+        "total": 470104,
+        "percent": 0.0
+      },
+      "sheetjs": {
+        "matched": 2922256,
+        "total": 2922657,
+        "percent": 99.98627960790472
+      }
+    },
+    "formulaFidelity": {
+      "matched": 0,
+      "total": 72609,
+      "percent": 0.0
+    },
+    "cachedResultFidelity": {
+      "matched": 42844,
+      "total": 72609,
+      "percent": 59.006459254362404
+    },
+    "parseTimeMs": {
+      "wax": {
+        "p50": 0,
+        "p95": 0
+      },
+      "sheetjs": {
+        "p50": 7,
+        "p95": 32
+      }
+    },
+    "peakRssBytes": {
+      "wax": {
+        "p50": 1769472,
+        "max": 66174976
+      },
+      "sheetjs": {
+        "p50": 93159424,
+        "max": 1274478592
+      }
+    },
+    "windowLatencyMs": {
+      "wax": null,
+      "sheetjs": null
+    }
+  }
+}
