@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T02:48:49Z",
+  "generatedAt": "2026-07-28T02:50:44Z",
   "filesAttempted": 2048,
   "filesSkipped": 0,
   "metrics": {
     "filesOpened": {
       "wax": {
-        "matched": 597,
+        "matched": 1964,
         "total": 2048,
-        "percent": 29.150390625
+        "percent": 95.8984375
       },
       "sheetjs": {
         "matched": 1990,
@@ -17,14 +17,14 @@
       }
     },
     "cellValueMatch": {
-      "matched": 448091,
-      "total": 693364,
-      "percent": 64.62565117312118
+      "matched": 2681418,
+      "total": 2910785,
+      "percent": 92.12009818657167
     },
     "displayStringCoverage": {
       "wax": {
         "matched": 0,
-        "total": 470104,
+        "total": 2879603,
         "percent": 0.0
       },
       "sheetjs": {
@@ -39,33 +39,33 @@
       "percent": null
     },
     "formulaFidelity": {
-      "matched": 0,
-      "total": 72609,
-      "percent": 0.0
+      "matched": 85580,
+      "total": 455164,
+      "percent": 18.802014219050715
     },
     "cachedResultFidelity": {
-      "matched": 42844,
-      "total": 72609,
-      "percent": 59.006459254362404
+      "matched": 240011,
+      "total": 455164,
+      "percent": 52.73066411227602
     },
     "parseTimeMs": {
       "wax": {
         "p50": 0,
-        "p95": 0
+        "p95": 2
       },
       "sheetjs": {
         "p50": 8,
-        "p95": 88
+        "p95": 65
       }
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 1769472,
-        "max": 66158592
+        "p50": 2506752,
+        "max": 1076215808
       },
       "sheetjs": {
-        "p50": 93306880,
-        "max": 1246937088
+        "p50": 93290496,
+        "max": 1247821824
       }
     },
     "windowLatencyMs": {
@@ -77,9 +77,9 @@
         "filesAttempted": 37,
         "filesOpened": {
           "wax": {
-            "matched": 0,
+            "matched": 34,
             "total": 37,
-            "percent": 0.0
+            "percent": 91.89189189189189
           },
           "sheetjs": {
             "matched": 34,
@@ -88,18 +88,18 @@
           }
         },
         "cellValueMatch": {
-          "matched": 0,
-          "total": 0,
-          "percent": null
+          "matched": 31617,
+          "total": 31813,
+          "percent": 99.3838996636595
         }
       },
       "xls": {
         "filesAttempted": 885,
         "filesOpened": {
           "wax": {
-            "matched": 0,
+            "matched": 853,
             "total": 885,
-            "percent": 0.0
+            "percent": 96.38418079096046
           },
           "sheetjs": {
             "matched": 858,
@@ -108,18 +108,18 @@
           }
         },
         "cellValueMatch": {
-          "matched": 0,
-          "total": 0,
-          "percent": null
+          "matched": 1347464,
+          "total": 1373463,
+          "percent": 98.10704765982047
         }
       },
       "xlsb": {
         "filesAttempted": 456,
         "filesOpened": {
           "wax": {
-            "matched": 0,
+            "matched": 447,
             "total": 456,
-            "percent": 0.0
+            "percent": 98.02631578947368
           },
           "sheetjs": {
             "matched": 453,
@@ -128,18 +128,18 @@
           }
         },
         "cellValueMatch": {
-          "matched": 0,
-          "total": 0,
-          "percent": null
+          "matched": 557991,
+          "total": 755203,
+          "percent": 73.88622661721418
         }
       },
       "xlsm": {
         "filesAttempted": 32,
         "filesOpened": {
           "wax": {
-            "matched": 0,
+            "matched": 29,
             "total": 32,
-            "percent": 0.0
+            "percent": 90.625
           },
           "sheetjs": {
             "matched": 32,
@@ -148,18 +148,18 @@
           }
         },
         "cellValueMatch": {
-          "matched": 0,
-          "total": 0,
-          "percent": null
+          "matched": 34879,
+          "total": 37808,
+          "percent": 92.25296233601354
         }
       },
       "xlsx": {
         "filesAttempted": 638,
         "filesOpened": {
           "wax": {
-            "matched": 597,
+            "matched": 601,
             "total": 638,
-            "percent": 93.57366771159874
+            "percent": 94.20062695924764
           },
           "sheetjs": {
             "matched": 613,
@@ -168,9 +168,9 @@
           }
         },
         "cellValueMatch": {
-          "matched": 448091,
-          "total": 693364,
-          "percent": 64.62565117312118
+          "matched": 709467,
+          "total": 712498,
+          "percent": 99.57459529710961
         }
       }
     }

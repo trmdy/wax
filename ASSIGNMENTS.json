@@ -96,7 +96,7 @@
       "branch": "agent/wax-w2a-reader",
       "worktree": ".worktrees/w2a",
       "bee": "wax-w2a",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "crates/wax-read/**",
         "crates/wax-cli/**",
