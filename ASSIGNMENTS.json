@@ -171,7 +171,7 @@
       "title": "Safety rails (bomb/XML/timeout) + cargo-fuzz targets wired into check.sh/CI",
       "branch": "agent/wax-w3c-safety",
       "worktree": ".worktrees/w3c",
-      "bee": "wax-w3c",
+      "bee": "wax-w3c2",
       "state": "working",
       "owns": [
         "crates/wax-read/src/safety.rs",
@@ -181,7 +181,7 @@
         ".github/**"
       ],
       "brief": "docs/briefs/w3c.md",
-      "beeId": "CO.a5b"
+      "beeId": null
     },
     {
       "id": "w3d",
@@ -215,6 +215,6 @@
       "beeId": "CO.717b"
     }
   ],
-  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest.",
+  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest. W3 addendum: original wax-w3c (CO.a5b) wedged mid-turn three times at the long-fuzz-rerun step and stopped responding to sends; retired 2026-07-28 with its nearly-finished work coordinator-checkpointed as wip commit d1757f4 on agent/wax-w3c-safety; replacement wax-w3c2 spawned into the same worktree to finish (short smokes, checks, seal).",
   "waveStatus": "W3 STARTED 2026-07-28 (operator go carried in coordinator CL.d73's spawn brief). Core: W3A proto server, W3B columnar store, W3C safety+fuzz, W3D harness client + scoreboard rows. W3E reader carry-overs run in the capacity lane only. Coordinator scaffolded the seam on main first: crates/wax-store stub with frozen 5-call API + full v0 ErrorCode list in wax-proto; proto v0 wire spec frozen in docs/w3-contracts.md. Gate: harness client drives open/window/export over stdio against the corpus; real window-latency + serve-RSS scoreboard rows; fuzz targets smoke-clean in check.sh/CI. W4 (writer) does NOT start without a fresh operator go."
 }
