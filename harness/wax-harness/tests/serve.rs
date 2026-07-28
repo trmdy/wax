@@ -121,9 +121,11 @@ fn records_process_death_for_every_in_flight_request() {
 
 #[test]
 fn kills_a_hung_server_and_records_the_client_timeout() {
-    let result = run("hang.xlsx", 500, false);
+    // Leave enough startup headroom for loaded CI hosts while still proving
+    // that a request-specific deadline kills the hung process.
+    let result = run("hang.xlsx", 2_000, false);
 
-    assert!(result.open_ok);
+    assert!(result.open_ok, "{result:#?}");
     assert!(result.killed);
     assert_eq!(result.failure.as_ref().unwrap().code, "client_timeout");
     let hung = result
@@ -137,5 +139,5 @@ fn kills_a_hung_server_and_records_the_client_timeout() {
                     .is_some_and(|error| error.code == "client_timeout")
         })
         .unwrap();
-    assert!(hung.wall_ms >= 375.0);
+    assert!(hung.wall_ms >= 1_500.0);
 }
