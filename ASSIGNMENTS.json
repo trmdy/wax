@@ -205,7 +205,7 @@
       "branch": "agent/wax-w3e-reader",
       "worktree": ".worktrees/w3e",
       "bee": "wax-w3e",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "crates/wax-read/src/calamine_reader.rs",
         "crates/wax-read/** (new style modules)",
