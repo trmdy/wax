@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Numbers" sheetId="7" r:id="rIdNumbers"/>
+    <sheet name="Inline" sheetId="3" r:id="rIdInline"/>
+  </sheets>
+</workbook>
