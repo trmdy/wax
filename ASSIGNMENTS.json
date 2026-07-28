@@ -157,7 +157,7 @@
       "branch": "agent/wax-w3b-store",
       "worktree": ".worktrees/w3b",
       "bee": "wax-w3b",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "crates/wax-store/**",
         "crates/wax-core/** (additive only)"
