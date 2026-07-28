@@ -260,49 +260,66 @@ fn preflight_biff_records(
             ),
         )
     })?;
-    let stream_bytes = stream.len();
-    let mut consumed = 0_u64;
-    let mut records = 0_usize;
-    while consumed < stream_bytes {
-        records = records
-            .checked_add(1)
+    // The stream size was validated against the container above and the
+    // container against `max_bytes`, so buffering is bounded (calamine
+    // buffers the same stream in full anyway).
+    let mut bytes = Vec::new();
+    stream.read_to_end(&mut bytes).map_err(|error| {
+        SafetyError::new(
+            ErrorCode::BadZip,
+            format!("could not read XLS Workbook stream: {error}"),
+        )
+    })?;
+
+    // Mirror calamine's exact read pattern: the globals substream from the
+    // start until its EOF record, then each BOUNDSHEET-declared sheet
+    // substream until its EOF. Slack regions between substreams are never
+    // read by calamine, so garbage there must not fail preflight.
+    let mut remaining_records = MAX_BIFF_RECORDS;
+    let sheet_offsets = walk_biff_substream(&bytes, 0, options, &mut remaining_records)?;
+    for offset in sheet_offsets {
+        walk_biff_substream(&bytes, offset, options, &mut remaining_records)?;
+    }
+
+    Ok(())
+}
+
+/// Walks one BIFF substream from `start` until its EOF record, validating
+/// every record calamine will read. Returns the sheet offsets declared by
+/// BOUNDSHEET records encountered (non-empty only for the globals substream).
+fn walk_biff_substream(
+    bytes: &[u8],
+    start: usize,
+    options: ReaderOptions,
+    remaining_records: &mut usize,
+) -> Result<Vec<usize>, SafetyError> {
+    let mut offset = start;
+    let mut sheet_offsets = Vec::new();
+
+    loop {
+        // Trailing padding that is not a whole record is tolerated by Excel
+        // and by calamine's bounds-checked RecordIter; stop, don't reject.
+        if bytes.len() - offset < 4 {
+            break;
+        }
+        *remaining_records = remaining_records
+            .checked_sub(1)
             .ok_or_else(|| SafetyError::new(ErrorCode::TooLarge, "BIFF record count overflowed"))?;
-        if records > MAX_BIFF_RECORDS {
+        if *remaining_records == 0 {
             return Err(SafetyError::new(
                 ErrorCode::TooLarge,
-                format!("XLS Workbook stream exceeds the {MAX_BIFF_RECORDS} record limit"),
+                "XLS Workbook stream exceeds the preflight record limit",
             ));
         }
-        // Real workbook streams routinely carry trailing padding that is not
-        // a whole record; Excel and calamine both tolerate it (calamine's
-        // RecordIter bounds-checks and errors structurally, never panics).
-        // Stop scanning instead of rejecting.
-        if stream_bytes - consumed < 4 {
-            break;
-        }
 
-        let mut header = [0_u8; 4];
-        stream.read_exact(&mut header).map_err(|error| {
-            SafetyError::new(
-                ErrorCode::BadZip,
-                format!("could not read BIFF record header: {error}"),
-            )
-        })?;
-        consumed += 4;
-        let kind = u16::from_le_bytes([header[0], header[1]]);
-        let record_bytes = u16::from_le_bytes([header[2], header[3]]) as usize;
-        let record_bytes_u64 = record_bytes as u64;
-        if record_bytes_u64 > stream_bytes - consumed {
+        let kind = u16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
+        let record_bytes = usize::from(u16::from_le_bytes([bytes[offset + 2], bytes[offset + 3]]));
+        offset += 4;
+        if record_bytes > bytes.len() - offset {
             break;
         }
-        let mut data = vec![0_u8; record_bytes];
-        stream.read_exact(&mut data).map_err(|error| {
-            SafetyError::new(
-                ErrorCode::BadZip,
-                format!("could not read BIFF record 0x{kind:04X}: {error}"),
-            )
-        })?;
-        consumed += record_bytes_u64;
+        let data = &bytes[offset..offset + record_bytes];
+        offset += record_bytes;
 
         if kind == 0x0809 && data.len() < 2 {
             return Err(SafetyError::new(
@@ -310,45 +327,84 @@ fn preflight_biff_records(
                 "BIFF BOF record is shorter than 2 bytes",
             ));
         }
-        if kind == 0x0200 {
-            check_declared_extent(&data, options.max_declared_cells)?;
-        }
-        if kind == 0x00BD {
-            let malformed = data.len() < 6 || {
-                let first_col = u16::from_le_bytes([data[2], data[3]]);
-                let last_col = u16::from_le_bytes([data[data.len() - 2], data[data.len() - 1]]);
-                last_col < first_col
-                    || data.len() != 6 + 6 * (usize::from(last_col - first_col) + 1)
-            };
-            if malformed {
-                return Err(SafetyError::new(
-                    ErrorCode::BadZip,
-                    "malformed BIFF MulRk record",
-                ));
-            }
-        }
-        if kind == 0x0085 {
-            if data.len() < 4 {
-                return Err(SafetyError::new(
-                    ErrorCode::BadZip,
-                    "BIFF BOUNDSHEET record is shorter than 4 bytes",
-                ));
-            }
-            let offset = u64::from(u32::from_le_bytes(
-                data[..4].try_into().expect("four bytes checked"),
+        // Minimum payload lengths for records calamine's XLS path reads at
+        // fixed offsets without bounds checks (fuzz-derived; utils.rs
+        // read_u16/read_u32/read_f64 panic on short slices). A record shorter
+        // than its fixed header cannot occur in a well-formed workbook.
+        let minimum = match kind {
+            0x0085 => 6,          // BoundSheet8: lbPlyPos + hsState/dt
+            0x00FC => 8,          // SST: cstTotal + cstUnique
+            0x00FD => 10,         // LabelSst: row, col, ixfe, isst
+            0x0203 => 14,         // Number: row, col, ixfe, xnum
+            0x0205 => 8,          // BoolErr: row, col, ixfe, bes
+            0x027E => 10,         // RK: row, col, ixfe, RkNumber
+            0x0204 | 0x00D6 => 8, // Label / RString fixed header
+            0x0006 => 22,         // Formula: cell, xnum, flags, chn, cce
+            0x0207 => 2,          // String (formula result): cch (BIFF5 has no grbit)
+            0x0200 => 10,         // Dimensions (also structurally checked)
+            0x0017 => 2,          // ExternSheet: cxti (XTI array may be continued)
+            0x00E5 => 2,          // MergeCells: cmcs
+            // Records whose calamine *match guards* read a u16 before the
+            // arm body runs, so a short payload panics before any check.
+            0x002F | 0x0042 | 0x0022 => 2, // FilePass, CodePage, DateMode
+            0x00E0 => 4,                   // XF: ifnt + ifmt
+            _ => 0,
+        };
+        if data.len() < minimum {
+            return Err(SafetyError::new(
+                ErrorCode::BadZip,
+                format!(
+                    "BIFF record 0x{kind:04X} is {} bytes, shorter than its {minimum} byte fixed header",
+                    data.len()
+                ),
             ));
-            if offset > stream_bytes {
-                return Err(SafetyError::new(
-                    ErrorCode::BadZip,
-                    format!(
-                        "BIFF BOUNDSHEET declares sheet offset {offset} beyond the {stream_bytes} byte Workbook stream"
-                    ),
-                ));
+        }
+        match kind {
+            0x000A => break, // EOF ends this substream
+            0x00E5 => {
+                let count = usize::from(u16::from_le_bytes([data[0], data[1]]));
+                if data.len() < 2 + 8 * count {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        "BIFF MergeCells record is shorter than its declared range count",
+                    ));
+                }
             }
+            0x0200 => check_declared_extent(data, options.max_declared_cells)?,
+            0x00BD => {
+                let malformed = data.len() < 6 || {
+                    let first_col = u16::from_le_bytes([data[2], data[3]]);
+                    let last_col = u16::from_le_bytes([data[data.len() - 2], data[data.len() - 1]]);
+                    last_col < first_col
+                        || data.len() != 6 + 6 * (usize::from(last_col - first_col) + 1)
+                };
+                if malformed {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        "malformed BIFF MulRk record",
+                    ));
+                }
+            }
+            0x0085 => {
+                let declared =
+                    u32::from_le_bytes(data[..4].try_into().expect("minimum length checked above"))
+                        as usize;
+                if declared > bytes.len() {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        format!(
+                            "BIFF BOUNDSHEET declares sheet offset {declared} beyond the {} byte Workbook stream",
+                            bytes.len()
+                        ),
+                    ));
+                }
+                sheet_offsets.push(declared);
+            }
+            _ => {}
         }
     }
 
-    Ok(())
+    Ok(sheet_offsets)
 }
 
 fn check_declared_extent(data: &[u8], max_cells: u64) -> Result<(), SafetyError> {
@@ -927,6 +983,48 @@ mod tests {
 
         assert_eq!(error.code(), ErrorCode::BadZip);
         assert!(error.message().contains("MulRk"));
+    }
+
+    #[test]
+    fn every_legacy_fuzz_artifact_produces_a_structured_document() {
+        // Defense in depth, and the honest statement of what wax guarantees:
+        // preflight rejects what it recognizes, and `CalamineReader`'s
+        // `catch_unwind` contains anything that still panics inside calamine.
+        // (cargo-fuzz builds with panic=abort, so the fuzz target reports
+        // those as crashes even though the shipped binary never aborts.)
+        let artifacts = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("fuzz")
+            .join("artifacts")
+            .join("legacy_xls_reader");
+        let Ok(entries) = std::fs::read_dir(&artifacts) else {
+            return; // artifacts are optional in a fresh clone
+        };
+        let mut checked = 0;
+        for entry in entries.flatten().filter(|entry| entry.path().is_file()) {
+            let source = std::fs::read(entry.path()).expect("artifact should be readable");
+            let mut input = tempfile::Builder::new()
+                .suffix(".xls")
+                .tempfile()
+                .expect("temporary XLS should be created");
+            input
+                .write_all(&source)
+                .expect("artifact should be written");
+
+            let document = read_with_deadline(
+                crate::CalamineReader,
+                input.path(),
+                ReaderOptions::default(),
+            );
+            assert!(
+                !document.ok && document.error.is_some(),
+                "artifact {:?} must produce a structured failure, never a panic or success",
+                entry.file_name()
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "at least one fuzz artifact should be checked");
     }
 
     #[test]
