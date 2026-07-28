@@ -1,6 +1,6 @@
 # wax mismatch triage
 
-Generated: `2026-07-28T18:45:19Z`
+Generated: `2026-07-28T19:10:33Z`
 
 Files compared: 2044.
 
@@ -40,7 +40,7 @@ Counts include private corpus files; example paths deliberately omit them.
 | Category | Occurrences | Example files |
 | --- | ---: | --- |
 | <code>###0.00;-###0.00</code> | 14592 | <code>corpus/files/poi/test-data/spreadsheet/49609.xlsx</code>, <code>corpus/files/sheetjs/test_files/apachepoi_49609.xlsx</code> |
-| <code>General</code> | 8537 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/contains_chartsheets.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/123233_charts.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/43623.xls</code> |
+| <code>General</code> | 8536 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/contains_chartsheets.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/123233_charts.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/34775.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/43623.xls</code> |
 | <code>m/d/yy</code> | 6504 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/complex-styles.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/empty_with_no_properties.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/genuine/empty-with-styles.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/genuine/sample.xlsx</code>, <code>corpus/files/openpyxl/3.1.5/openpyxl/worksheet/tests/data/test_datetime.xlsx</code> |
 | <code>hhmm</code> | 6110 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
 | <code>[m]</code> | 6106 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |

@@ -1,6 +1,6 @@
 # wax compatibility scoreboard
 
-Generated: `2026-07-28T18:45:19Z`
+Generated: `2026-07-28T19:10:33Z`
 
 Corpus: 2044 attempted, 0 skipped.
 
@@ -9,15 +9,15 @@ Corpus: 2044 attempted, 0 skipped.
 | files opened % | 95.69% (1956/2044) | 97.16% (1986/2044) |
 | open-via-serve % | 95.69% (1956/2044) | n/a |
 | cell-value match % | 92.31% (2679994/2903176) | reference |
-| display-string coverage % | 99.97% (2874062/2874810) | 99.99% (2916766/2917167) |
-| display-string match % | 97.09% (2789543/2873203) | reference |
+| display-string coverage % | 99.97% (2874035/2874810) | 99.99% (2916766/2917167) |
+| display-string match % | 97.09% (2789517/2873176) | reference |
 | formula fidelity % | 18.19% (82149/451733) | reference |
 | cached-result fidelity % | 53.53% (241796/451733) | reference |
-| p50 parse time | 1 ms | 10 ms |
-| p95 parse time | 10 ms | 53 ms |
-| peak RSS (p50 / max) | 3.16 MiB / 651.53 MiB | 95.92 MiB / 1.17 GiB |
-| serve peak RSS (p50 / max) | 3.34 MiB / 753.44 MiB | n/a |
-| window latency (p50 / p95) | 6.880 ms / 11.268 ms | n/a |
+| p50 parse time | 1 ms | 11 ms |
+| p95 parse time | 10 ms | 85 ms |
+| peak RSS (p50 / max) | 3.12 MiB / 674.80 MiB | 95.98 MiB / 1.13 GiB |
+| serve peak RSS (p50 / max) | 3.33 MiB / 758.36 MiB | n/a |
+| window latency (p50 / p95) | 6.562 ms / 10.634 ms | n/a |
 
 ## Writer round-trip
 
@@ -25,7 +25,7 @@ Corpus: 2044 attempted, 0 skipped.
 | --- | ---: |
 | round-trip files clean % | 94.57% (1846/1952) |
 | round-trip value fidelity % | 99.56% (2065753/2074802) |
-| round-trip display fidelity % | 99.93% (2073342/2074802) |
+| round-trip display fidelity % | 99.93% (2073315/2074802) |
 | oracle read-back open % | 100.00% (1949/1949) |
 | soffice-open rate | 100.00% (185/185) |
 | truncated models skipped | 4 |

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T18:45:19Z",
+  "generatedAt": "2026-07-28T19:10:33Z",
   "filesAttempted": 2044,
   "filesSkipped": 0,
   "metrics": {
@@ -23,9 +23,9 @@
     },
     "displayStringCoverage": {
       "wax": {
-        "matched": 2874062,
+        "matched": 2874035,
         "total": 2874810,
-        "percent": 99.97398088917181
+        "percent": 99.97304169666864
       },
       "sheetjs": {
         "matched": 2916766,
@@ -34,9 +34,9 @@
       }
     },
     "displayStringMatch": {
-      "matched": 2789543,
-      "total": 2873203,
-      "percent": 97.08826699679766
+      "matched": 2789517,
+      "total": 2873176,
+      "percent": 97.08827443915723
     },
     "formulaFidelity": {
       "matched": 82149,
@@ -54,18 +54,18 @@
         "p95": 10
       },
       "sheetjs": {
-        "p50": 10,
-        "p95": 53
+        "p50": 11,
+        "p95": 85
       }
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 3309568,
-        "max": 683180032
+        "p50": 3276800,
+        "max": 707575808
       },
       "sheetjs": {
-        "p50": 100581376,
-        "max": 1259405312
+        "p50": 100646912,
+        "max": 1217249280
       }
     },
     "windowLatencyMs": {
@@ -78,12 +78,12 @@
       "percent": 95.69471624266144
     },
     "windowLatencyPercentilesMs": {
-      "p50": 6.879625000000001,
-      "p95": 11.268125
+      "p50": 6.561624999999999,
+      "p95": 10.633875
     },
     "servePeakRssBytes": {
-      "p50": 3506176,
-      "max": 790036480
+      "p50": 3489792,
+      "max": 795197440
     },
     "serveStatus": {
       "status": "available",
@@ -253,9 +253,9 @@
         "percent": 99.56386199743397
       },
       "displayMatch": {
-        "matched": 2073342,
+        "matched": 2073315,
         "total": 2074802,
-        "percent": 99.9296318395683
+        "percent": 99.92833051057401
       },
       "oracleOpenRate": {
         "matched": 1949,
