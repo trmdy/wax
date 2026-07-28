@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
 
@@ -7,9 +7,13 @@ use encoding_rs::{Encoding, WINDOWS_1252};
 
 use super::{builtin_format, explicit_format};
 
+type CellPosition = (u32, u32);
+type ParsedSheetStyles = (HashMap<CellPosition, String>, HashSet<CellPosition>);
+
 #[derive(Default)]
 pub(super) struct XlsStyleSupplement {
     sheets: Vec<HashMap<(u32, u32), String>>,
+    empty_formula_cells: Vec<HashSet<(u32, u32)>>,
 }
 
 impl XlsStyleSupplement {
@@ -32,6 +36,16 @@ impl XlsStyleSupplement {
             .get(sheet_index)?
             .get(&position)
             .map(String::as_str)
+    }
+
+    pub(super) fn empty_formula_cells(
+        &self,
+        sheet_index: usize,
+    ) -> impl Iterator<Item = &(u32, u32)> {
+        self.empty_formula_cells
+            .get(sheet_index)
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -85,32 +99,73 @@ fn parse_workbook_stream(stream: &[u8]) -> Result<XlsStyleSupplement, String> {
         })
         .collect::<Vec<_>>();
     let mut sheets = Vec::with_capacity(sheet_offsets.len());
+    let mut empty_formula_cells = Vec::with_capacity(sheet_offsets.len());
     for offset in sheet_offsets {
         if offset >= stream.len() {
             sheets.push(HashMap::new());
+            empty_formula_cells.push(HashSet::new());
             continue;
         }
-        sheets.push(parse_sheet_styles(&stream[offset..], &xf_formats)?);
+        let (styles, empty_formulas) = parse_sheet_styles(&stream[offset..], &xf_formats)?;
+        sheets.push(styles);
+        empty_formula_cells.push(empty_formulas);
     }
-    Ok(XlsStyleSupplement { sheets })
+    Ok(XlsStyleSupplement {
+        sheets,
+        empty_formula_cells,
+    })
 }
 
 fn parse_sheet_styles(
     stream: &[u8],
     xf_formats: &[Option<String>],
-) -> Result<HashMap<(u32, u32), String>, String> {
+) -> Result<ParsedSheetStyles, String> {
     let mut styles = HashMap::new();
+    let mut empty_formula_cells = HashSet::new();
+    let mut pending_string_formula = None;
     let mut records = BiffRecordIter::new(stream);
     while let Some(record) = records.next_record()? {
+        if record.kind != 0x0207 && record.kind != 0x003C {
+            pending_string_formula = None;
+        }
         match record.kind {
-            // Formula, Blank, Label, BoolErr, Number, RString, RK, LabelSst.
-            0x0006 | 0x0201 | 0x0203 | 0x0204 | 0x0205 | 0x00D6 | 0x027E | 0x00FD
+            // Blank, Label, BoolErr, Number, RString, RK, LabelSst.
+            0x0201 | 0x0203 | 0x0204 | 0x0205 | 0x00D6 | 0x027E | 0x00FD
                 if record.data.len() >= 6 =>
             {
                 let row = u16::from_le_bytes([record.data[0], record.data[1]]) as u32;
                 let col = u16::from_le_bytes([record.data[2], record.data[3]]) as u32;
                 let xf = u16::from_le_bytes([record.data[4], record.data[5]]) as usize;
                 insert_style(&mut styles, (row, col), xf, xf_formats);
+            }
+            // Formula cached results use a sentinel. 0x03 is an immediate
+            // empty string; 0x00 means the following STRING record carries
+            // the cached text and may itself be empty.
+            0x0006 if record.data.len() >= 14 => {
+                let row = u16::from_le_bytes([record.data[0], record.data[1]]) as u32;
+                let col = u16::from_le_bytes([record.data[2], record.data[3]]) as u32;
+                let position = (row, col);
+                let xf = u16::from_le_bytes([record.data[4], record.data[5]]) as usize;
+                insert_style(&mut styles, position, xf, xf_formats);
+                let cached = &record.data[6..14];
+                if cached[6..] == [0xFF, 0xFF] {
+                    match cached[0] {
+                        0x03 => {
+                            empty_formula_cells.insert(position);
+                        }
+                        0x00 => pending_string_formula = Some(position),
+                        _ => {}
+                    }
+                }
+            }
+            0x0207 => {
+                if record.data.get(..2) == Some(&[0, 0]) {
+                    if let Some(position) = pending_string_formula.take() {
+                        empty_formula_cells.insert(position);
+                    }
+                } else {
+                    pending_string_formula = None;
+                }
             }
             // MulRk: row, first column, repeated (XF, RK), last column.
             0x00BD if record.data.len() >= 12 => {
@@ -131,7 +186,7 @@ fn parse_sheet_styles(
             _ => {}
         }
     }
-    Ok(styles)
+    Ok((styles, empty_formula_cells))
 }
 
 fn insert_style(
@@ -282,6 +337,39 @@ mod tests {
         assert_eq!(supplement.cell(0, (2, 3)), Some(code));
         assert_eq!(supplement.cell(0, (5, 1)), Some(code));
         assert_eq!(supplement.cell(0, (5, 2)), None);
+    }
+
+    #[test]
+    fn discovers_biff_formula_cells_with_empty_string_caches() {
+        let mut global = Vec::new();
+        push_record(&mut global, 0x0809, &[0x00, 0x06, 0x05, 0x00]);
+        let bound_sheet_start = global.len();
+        push_record(&mut global, 0x0085, &[0; 8]);
+        push_record(&mut global, 0x000A, &[]);
+
+        let sheet_offset = global.len() as u32;
+        global[bound_sheet_start + 4..bound_sheet_start + 8]
+            .copy_from_slice(&sheet_offset.to_le_bytes());
+        push_record(&mut global, 0x0809, &[0x00, 0x06, 0x10, 0x00]);
+
+        let mut deferred = vec![2, 0, 3, 0, 0, 0];
+        deferred.extend_from_slice(&[0x00, 0, 0, 0, 0, 0, 0xFF, 0xFF]);
+        deferred.extend_from_slice(&[0; 6]);
+        push_record(&mut global, 0x0006, &deferred);
+        push_record(&mut global, 0x0207, &[0, 0, 0]);
+
+        let mut immediate = vec![4, 0, 5, 0, 0, 0];
+        immediate.extend_from_slice(&[0x03, 0, 0, 0, 0, 0, 0xFF, 0xFF]);
+        immediate.extend_from_slice(&[0; 6]);
+        push_record(&mut global, 0x0006, &immediate);
+        push_record(&mut global, 0x000A, &[]);
+
+        let supplement = parse_workbook_stream(&global).unwrap();
+        let cells = supplement
+            .empty_formula_cells(0)
+            .copied()
+            .collect::<HashSet<_>>();
+        assert_eq!(cells, HashSet::from([(2, 3), (4, 5)]));
     }
 
     #[test]

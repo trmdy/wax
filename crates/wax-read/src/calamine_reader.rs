@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-use std::io::{BufReader, Read, Seek};
+use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -14,7 +14,8 @@ use quick_xml::Reader as XmlReader;
 use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo, Document, DumpError, Sheet};
 use wax_fmt::{render, FmtValue};
 use wax_proto::ErrorCode;
-use zip::ZipArchive;
+use zip::write::SimpleFileOptions;
+use zip::{ZipArchive, ZipWriter};
 
 use crate::{Reader, ReaderOptions};
 
@@ -134,11 +135,30 @@ fn read_xlsx(
     started: Instant,
     timeout: Duration,
 ) -> Result<ReadOutcome, ReadFailure> {
-    let mut workbook: Xlsx<BufReader<File>> =
+    if let Ok(Some(reader)) = normalize_nonstandard_workbook_package(path) {
+        let workbook =
+            Xlsx::new(reader).map_err(|error| container_error(WorkbookKind::Xlsx, error))?;
+        return read_xlsx_workbook(workbook, path, max_cells, started, timeout, true);
+    }
+    let workbook: Xlsx<BufReader<File>> =
         open_workbook(path).map_err(|error| container_error(WorkbookKind::Xlsx, error))?;
+    read_xlsx_workbook(workbook, path, max_cells, started, timeout, false)
+}
+
+fn read_xlsx_workbook<RS: Read + Seek>(
+    mut workbook: Xlsx<RS>,
+    path: &Path,
+    max_cells: usize,
+    started: Instant,
+    timeout: Duration,
+    normalized_workbook_part: bool,
+) -> Result<ReadOutcome, ReadFailure> {
     let epoch_1904 = workbook.has_1904_epoch();
     let metadata = workbook.sheets_metadata().to_vec();
     let mut warnings = Vec::new();
+    if normalized_workbook_part {
+        warnings.push("nonstandard OOXML workbook part normalized in memory".to_owned());
+    }
     let supplement = match OoxmlSupplement::read(path) {
         Ok(supplement) => supplement,
         Err(message) => {
@@ -182,9 +202,17 @@ fn read_xlsx(
                 let cell_metadata = supplement.cell(&metadata.name, record.pos);
                 let formula =
                     normalize_xlsx_formula(record.formula, record.pos, &mut shared_formulas);
+                let value = Data::from(record.value);
+                // Empty OOXML strings without a formula are layout/style
+                // placeholders, not value-bearing cells in the normalized
+                // sparse model. Formula cells remain present even when their
+                // cached string is empty.
+                if formula.is_none() && matches!(&value, Data::String(text) if text.is_empty()) {
+                    continue;
+                }
                 if let Some(mut cell) = normalize_cell(
                     record.pos,
-                    &Data::from(record.value),
+                    &value,
                     formula,
                     cell_metadata.and_then(|metadata| metadata.format),
                     cell_metadata.and_then(|metadata| metadata.declared_type),
@@ -257,11 +285,30 @@ fn read_xlsb(
     started: Instant,
     timeout: Duration,
 ) -> Result<(Vec<Sheet>, Vec<String>), ReadFailure> {
-    let mut workbook: Xlsb<BufReader<File>> =
+    if let Ok(Some(reader)) = xlsb_styles::normalize_legacy_bundle_workbook(path) {
+        let workbook =
+            Xlsb::new(reader).map_err(|error| container_error(WorkbookKind::Xlsb, error))?;
+        return read_xlsb_workbook(workbook, path, max_cells, started, timeout, true);
+    }
+    let workbook: Xlsb<BufReader<File>> =
         open_workbook(path).map_err(|error| container_error(WorkbookKind::Xlsb, error))?;
+    read_xlsb_workbook(workbook, path, max_cells, started, timeout, false)
+}
+
+fn read_xlsb_workbook<RS: Read + Seek>(
+    mut workbook: Xlsb<RS>,
+    path: &Path,
+    max_cells: usize,
+    started: Instant,
+    timeout: Duration,
+    normalized_legacy_bundle: bool,
+) -> Result<(Vec<Sheet>, Vec<String>), ReadFailure> {
     let epoch_1904 = workbook.has_1904_epoch();
     let metadata = workbook.sheets_metadata().to_vec();
     let mut warnings = Vec::new();
+    if normalized_legacy_bundle {
+        warnings.push("xlsb legacy bundle-sheet layout normalized in memory".to_owned());
+    }
     let supplement = match xlsb_styles::XlsbStyleSupplement::read(path) {
         Ok(supplement) => supplement,
         Err(message) => {
@@ -297,7 +344,10 @@ fn read_xlsb(
                 }
                 let position = cell.get_position();
                 let candidate = records.entry(position).or_default();
-                candidate.value = Data::from(cell.get_value().clone());
+                let value = Data::from(cell.get_value().clone());
+                if !matches!(&value, Data::String(text) if text.is_empty()) {
+                    candidate.value = value;
+                }
                 candidate.format = supplement.cell(&metadata.name, position).map(str::to_owned);
             }
         }
@@ -306,16 +356,25 @@ fn read_xlsb(
                 .worksheet_cells_reader(&metadata.name)
                 .map_err(|error| container_error(WorkbookKind::Xlsb, error))?;
             let mut seen = 0_usize;
-            while let Some(cell) = formulas
-                .next_formula()
-                .map_err(|error| container_error(WorkbookKind::Xlsb, error))?
-            {
-                seen += 1;
-                if seen.is_multiple_of(4096) {
-                    ensure_time_remaining(started, timeout)?;
+            loop {
+                match formulas.next_formula() {
+                    Ok(Some(cell)) => {
+                        seen += 1;
+                        if seen.is_multiple_of(4096) {
+                            ensure_time_remaining(started, timeout)?;
+                        }
+                        records.entry(cell.get_position()).or_default().formula =
+                            normalize_formula(cell.get_value().clone());
+                    }
+                    Ok(None) => break,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "xlsb formulas for sheet {:?} are partial: {error}",
+                            metadata.name
+                        ));
+                        break;
+                    }
                 }
-                records.entry(cell.get_position()).or_default().formula =
-                    normalize_formula(cell.get_value().clone());
             }
         }
         if let Some(metadata) = supplement.cells(&metadata.name) {
@@ -324,6 +383,8 @@ fn read_xlsb(
                 candidate.format = metadata.format.clone();
                 if let Some(error) = metadata.cached_error.and_then(xlsb_error) {
                     candidate.value = Data::Error(error);
+                } else if metadata.cached_empty_string {
+                    candidate.value = Data::String(String::new());
                 }
             }
         }
@@ -384,6 +445,12 @@ fn read_xls(
             .worksheet_formula(&metadata.name)
             .map_err(|error| container_error(WorkbookKind::Xls, error))?;
         let (mut records, rows, cols) = range_records(&values, &formulas);
+        for &position in supplement.empty_formula_cells(index) {
+            let candidate = records.entry(position).or_default();
+            if matches!(candidate.value, Data::Empty) {
+                candidate.value = Data::String(String::new());
+            }
+        }
         for (position, candidate) in &mut records {
             candidate.format = supplement.cell(index, *position).map(str::to_owned);
         }
@@ -466,7 +533,9 @@ fn range_records(
             value_start.0.saturating_add(row as u32),
             value_start.1.saturating_add(col as u32),
         );
-        records.entry(position).or_default().value = value.clone();
+        if !matches!(value, Data::String(text) if text.is_empty()) {
+            records.entry(position).or_default().value = value.clone();
+        }
     }
     let formula_start = formulas.start().unwrap_or((0, 0));
     for (row, col, formula) in formulas.used_cells() {
@@ -512,9 +581,8 @@ fn normalize_cell(
     declared_type: Option<CellType>,
     epoch_1904: bool,
 ) -> Option<Cell> {
-    let is_empty = matches!(data, Data::Empty)
-        || matches!(data, Data::String(value) if value.is_empty())
-        || matches!(data, Data::Float(value) if !value.is_finite());
+    let is_empty =
+        matches!(data, Data::Empty) || matches!(data, Data::Float(value) if !value.is_finite());
     if formula.is_none() && is_empty {
         return None;
     }
@@ -560,9 +628,10 @@ fn normalize_cell(
         }
         Data::DateTime(value) if value.is_datetime() => {
             let serial = value.as_f64();
+            let (cell_type, value) = normalize_number_value(serial, code, epoch_1904);
             (
-                CellType::D,
-                Some(CellValue::Text(excel_datetime_iso(*value))),
+                cell_type,
+                Some(value),
                 render(code, FmtValue::Number(serial), epoch_1904),
             )
         }
@@ -600,7 +669,9 @@ fn normalize_cell(
 }
 
 fn normalize_number_value(raw: f64, code: &str, epoch_1904: bool) -> (CellType, CellValue) {
-    if number_format_kind(code) == NumberFormatKind::DateTime {
+    // Excel's date systems do not render negative serials as dates. Keep the
+    // stored number losslessly instead of clamping it to the epoch date.
+    if raw >= 0.0 && number_format_kind(code) == NumberFormatKind::DateTime {
         let value = ExcelDateTime::new(raw, ExcelDateTimeType::DateTime, epoch_1904);
         (CellType::D, CellValue::Text(excel_datetime_iso(value)))
     } else {
@@ -890,12 +961,21 @@ fn container_error(kind: WorkbookKind, error: impl std::fmt::Display) -> ReadFai
     } else if matches!(
         kind,
         WorkbookKind::Xlsx | WorkbookKind::Xlsb | WorkbookKind::Ods
-    ) {
+    ) || matches!(kind, WorkbookKind::Xls) && is_structural_xls_error(&lowercase)
+    {
         ErrorCode::BadZip
     } else {
         ErrorCode::Internal
     };
     ReadFailure::new(code, message)
+}
+
+fn is_structural_xls_error(message: &str) -> bool {
+    message.contains("cfb error:")
+        || message.contains("invalid short string length")
+        || message.contains("invalid long string length")
+        || message.contains("invalid compound")
+        || message.contains("sector ") && message.contains("past end of file")
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1137,9 +1217,15 @@ fn zip_lookup<R: Read + Seek>(
         let entry = archive
             .by_index(index)
             .map_err(|error| format!("could not inspect zip entry: {error}"))?;
-        lookup.insert(entry.name().to_ascii_lowercase(), entry.name().to_owned());
+        lookup.insert(zip_part_key(entry.name()), entry.name().to_owned());
     }
     Ok(lookup)
+}
+
+fn zip_part_key(path: &str) -> String {
+    path.trim_start_matches(['/', '\\'])
+        .replace('\\', "/")
+        .to_ascii_lowercase()
 }
 
 fn read_part<R: Read + Seek>(
@@ -1155,7 +1241,7 @@ fn read_part_optional<R: Read + Seek>(
     lookup: &HashMap<String, String>,
     path: &str,
 ) -> Result<Option<Vec<u8>>, String> {
-    let normalized = path.trim_start_matches('/').to_ascii_lowercase();
+    let normalized = zip_part_key(path);
     let Some(actual_path) = lookup.get(&normalized) else {
         return Ok(None);
     };
@@ -1167,6 +1253,75 @@ fn read_part_optional<R: Read + Seek>(
         .read_to_end(&mut bytes)
         .map_err(|error| format!("could not read {path}: {error}"))?;
     Ok(Some(bytes))
+}
+
+fn normalize_nonstandard_workbook_package(path: &Path) -> Result<Option<Cursor<Vec<u8>>>, String> {
+    let input = File::open(path).map_err(|error| format!("could not open package: {error}"))?;
+    let mut archive =
+        ZipArchive::new(BufReader::new(input)).map_err(|error| format!("bad zip: {error}"))?;
+    let lookup = zip_lookup(&mut archive)?;
+    let Some(root_relationships) = read_part_optional(&mut archive, &lookup, "_rels/.rels")? else {
+        return Ok(None);
+    };
+    let Some(workbook_path) = parse_relationships(&root_relationships)?
+        .into_iter()
+        .find(|relationship| relationship.kind.ends_with("/officeDocument"))
+        .map(|relationship| resolve_part("", &relationship.target))
+    else {
+        return Ok(None);
+    };
+    let directory = workbook_path
+        .rsplit_once('/')
+        .map_or("", |(directory, _)| directory);
+    let standard_workbook_path = if directory.is_empty() {
+        "workbook.xml".to_owned()
+    } else {
+        format!("{directory}/workbook.xml")
+    };
+    if zip_part_key(&workbook_path) == zip_part_key(&standard_workbook_path) {
+        return Ok(None);
+    }
+    let workbook = read_part(&mut archive, &lookup, &workbook_path)?;
+    let workbook_relationships_path = relationships_path(&workbook_path);
+    let workbook_relationships = read_part(&mut archive, &lookup, &workbook_relationships_path)?;
+    let standard_relationships_path = relationships_path(&standard_workbook_path);
+
+    let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("could not inspect zip entry: {error}"))?;
+        if entry.is_dir() {
+            continue;
+        }
+        let name = entry.name().to_owned();
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("could not read {name}: {error}"))?;
+        writer
+            .start_file(&name, SimpleFileOptions::default())
+            .map_err(|error| format!("could not normalize {name}: {error}"))?;
+        writer
+            .write_all(&bytes)
+            .map_err(|error| format!("could not normalize {name}: {error}"))?;
+    }
+    for (name, bytes) in [
+        (standard_workbook_path, workbook),
+        (standard_relationships_path, workbook_relationships),
+    ] {
+        writer
+            .start_file(&name, SimpleFileOptions::default())
+            .map_err(|error| format!("could not add {name}: {error}"))?;
+        writer
+            .write_all(&bytes)
+            .map_err(|error| format!("could not add {name}: {error}"))?;
+    }
+    let mut reader = writer
+        .finish()
+        .map_err(|error| format!("could not finish normalized package: {error}"))?;
+    reader.set_position(0);
+    Ok(Some(reader))
 }
 
 fn parse_workbook_sheets(xml: &[u8]) -> Result<Vec<WorkbookSheet>, String> {
@@ -1783,6 +1938,7 @@ fn resolve_part(base_part: &str, target: &str) -> String {
 }
 
 fn normalize_part(path: &str) -> String {
+    let path = path.replace('\\', "/");
     let mut components = Vec::new();
     for component in path.trim_start_matches('/').split('/') {
         match component {
@@ -1882,6 +2038,34 @@ mod tests {
         assert_eq!(builtin_format(23), None);
         assert_eq!(builtin_format(49), Some("@"));
         assert_eq!(builtin_format(50), None);
+    }
+
+    #[test]
+    fn structural_legacy_xls_errors_are_bad_zip_not_internal() {
+        for message in [
+            "Invalid short string length, expected at least 2, found 1",
+            "Cfb error: Sector 4294967274 points past end of file",
+        ] {
+            let failure = container_error(WorkbookKind::Xls, message);
+            assert_eq!(failure.code, ErrorCode::BadZip, "{message}");
+        }
+    }
+
+    #[test]
+    fn explicit_empty_string_cells_are_not_dropped() {
+        let cell = normalize_cell(
+            (2, 3),
+            &Data::String(String::new()),
+            None,
+            None,
+            None,
+            false,
+        )
+        .expect("an explicit empty string is still a cell");
+
+        assert_eq!(cell.t, CellType::S);
+        assert_eq!(cell.v, Some(CellValue::Text(String::new())));
+        assert_eq!(cell.d, Some(String::new()));
     }
 
     #[test]
@@ -2240,6 +2424,10 @@ mod tests {
         assert_eq!(
             normalize_number_value(0.9, "[h]", false),
             (CellType::N, CellValue::Number(0.9))
+        );
+        assert_eq!(
+            normalize_number_value(-12_345.678_9, "mm-dd-yy", false),
+            (CellType::N, CellValue::Number(-12_345.678_9))
         );
     }
 }
