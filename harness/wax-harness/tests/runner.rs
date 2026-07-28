@@ -178,6 +178,7 @@ fn runner_collects_round_trip_oracle_and_soffice_metrics_with_mocked_export() {
     let output = harness_command(root.path())
         .arg("--soffice")
         .env("WAX_BIN", fixture("fake-wax-export.sh"))
+        .env("WAX_FAKE_EXPORT_DROPPED", "1")
         .env("WAX_SOFFICE_BIN", fixture("fake-soffice.sh"))
         .output()
         .unwrap();
@@ -211,6 +212,10 @@ fn runner_collects_round_trip_oracle_and_soffice_metrics_with_mocked_export() {
         .find(|result| result["id"] == "fixtures/match.xlsx")
         .unwrap();
     assert_eq!(clean["roundTrip"]["status"], "clean");
+    assert_eq!(
+        clean["roundTrip"]["exportDropped"][0],
+        "cell A1 string truncated from 32768 to 32767 characters"
+    );
     let failed = results
         .iter()
         .find(|result| result["id"] == "fixtures/diff.xlsx")
@@ -222,10 +227,12 @@ fn runner_collects_round_trip_oracle_and_soffice_metrics_with_mocked_export() {
     assert!(markdown.contains("| round-trip files clean % | 50.00% (1/2) |"));
     assert!(markdown.contains("| oracle read-back open % | 100.00% (1/1) |"));
     assert!(markdown.contains("| soffice-open rate | 100.00% (1/1) |"));
+    let triage = fs::read_to_string(root.path().join("harness/triage.md")).unwrap();
+    assert!(triage.contains("cell A1 string truncated from 32768 to 32767 characters"));
 }
 
 #[test]
-fn structured_internal_export_error_degrades_the_whole_section_to_na() {
+fn structured_internal_export_error_is_a_loud_failed_round_trip() {
     let root = prepare_repo();
     let output = harness_command(root.path())
         .env("WAX_BIN", fixture("fake-wax-export.sh"))
@@ -239,15 +246,32 @@ fn structured_internal_export_error_degrades_the_whole_section_to_na() {
             .unwrap();
     assert_eq!(
         scoreboard["metrics"]["roundTrip"]["status"]["status"],
-        "unavailable"
+        "available"
+    );
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["filesClean"]["matched"],
+        0
     );
     assert_eq!(scoreboard["metrics"]["roundTrip"]["filesClean"]["total"], 2);
     assert_eq!(
         scoreboard["metrics"]["roundTrip"]["filesClean"]["percent"],
-        Value::Null
+        0.0
     );
+    let results = fs::read_to_string(root.path().join("harness/results.jsonl")).unwrap();
+    for line in results.lines() {
+        let result: Value = serde_json::from_str(line).unwrap();
+        if result["roundTrip"].is_null() {
+            continue;
+        }
+        assert_eq!(result["roundTrip"]["status"], "failed");
+        assert_eq!(result["roundTrip"]["error"]["stage"], "export");
+        assert_eq!(result["roundTrip"]["error"]["code"], "internal");
+    }
     let markdown = fs::read_to_string(root.path().join("SCOREBOARD.md")).unwrap();
-    assert_eq!(markdown.matches("n/a (xlsx export unavailable)").count(), 5);
+    assert!(markdown.contains("| round-trip files clean % | 0.00% (0/2) |"));
+    assert!(!markdown.contains("n/a (xlsx export unavailable)"));
+    let triage = fs::read_to_string(root.path().join("harness/triage.md")).unwrap();
+    assert!(triage.contains("export: internal: xlsx writer is not available"));
 }
 
 #[test]

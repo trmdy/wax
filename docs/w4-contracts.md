@@ -145,6 +145,16 @@ Rustdoc in the crate is normative. Behavior:
 - No formula evaluation, ever. No reading of arbitrary files: the writer's
   only input is the store.
 
+- *(Amended 2026-07-28 W5 — oversized cell strings truncate loudly instead
+  of failing the workbook export:)* xlsx text cells and cached string formula
+  results longer than 32,767 Unicode characters are truncated to exactly
+  32,767 characters at a character boundary. Each affected cell contributes
+  a `dropped` detail naming its cell reference and original character count;
+  details are deduplicated and bounded to 100, followed by an omitted-entry
+  count when more cells are affected. The xlsx export succeeds with those
+  loud drops. CSV retains the complete string and is never truncated by this
+  xlsx-only limit.
+
 ## 3. Protocol + CLI wiring (W4C)
 
 - **serve `export` op**: `format:"xlsx"` goes live via

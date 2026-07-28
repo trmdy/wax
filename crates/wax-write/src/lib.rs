@@ -45,6 +45,8 @@ const DEFAULT_TIME_FORMAT: &str = "hh:mm:ss";
 const DEFAULT_TIME_MILLIS_FORMAT: &str = "hh:mm:ss.000";
 const UNREPRESENTABLE_MERGES_DROPPED: &str = "unrepresentable merge ranges";
 const CLAMPED_COLUMN_WIDTHS_DROPPED: &str = "column widths clamped to 0..=255";
+const XLSX_MAX_STRING_CHARS: usize = 32_767;
+const MAX_DROPPED_DETAILS: usize = 100;
 
 /// A successful export: bytes written to the output file plus every feature
 /// of the model (or of the source, when the caller merges open-time
@@ -197,20 +199,7 @@ pub fn write_xlsx(
             }
             previous_position = Some(position);
             previous_had_formula = cell.f.is_some();
-            if let Err(error) = write_xlsx_cell(
-                worksheet,
-                &mut formats,
-                store.styles(),
-                row,
-                column,
-                &cell,
-                &mut dropped,
-                out,
-            ) {
-                scan_error = Some(error);
-                return;
-            }
-            if let Some(formula) = &cell.f {
+            let cached_formula = if let Some(formula) = &cell.f {
                 let Ok(column) = xlsx_column(column) else {
                     scan_error = Some(WriteError::new(
                         "internal",
@@ -218,16 +207,39 @@ pub fn write_xlsx(
                     ));
                     return;
                 };
-                let cached_result = match formula_result(&cell, row, column) {
-                    Ok(result) => result,
-                    Err(error) => {
-                        scan_error = Some(error);
-                        return;
-                    }
-                };
+                let cached_result =
+                    match formula_result(&cell, &meta.name, row, column, &mut dropped) {
+                        Ok(result) => result,
+                        Err(error) => {
+                            scan_error = Some(error);
+                            return;
+                        }
+                    };
+                Some((formula.clone(), column, cached_result))
+            } else {
+                None
+            };
+            if let Err(error) = write_xlsx_cell(
+                worksheet,
+                &mut formats,
+                store.styles(),
+                &meta.name,
+                row,
+                column,
+                &cell,
+                cached_formula
+                    .as_ref()
+                    .and_then(|(_, _, result)| result.as_deref()),
+                &mut dropped,
+                out,
+            ) {
+                scan_error = Some(error);
+                return;
+            }
+            if let Some((formula, column, cached_result)) = cached_formula {
                 sheet_formula_patches.push(FormulaPatch {
                     cell: cell_reference(row, column),
-                    formula: formula.clone(),
+                    formula,
                     cached_result,
                     cell_type: cell.t,
                 });
@@ -378,17 +390,30 @@ pub fn write_csv(
 struct Dropped {
     entries: Vec<String>,
     seen: HashSet<String>,
+    omitted: usize,
 }
 
 impl Dropped {
     fn add(&mut self, entry: impl Into<String>) {
         let entry = entry.into();
-        if self.seen.insert(entry.clone()) {
+        if self.seen.contains(&entry) {
+            return;
+        }
+        if self.entries.len() < MAX_DROPPED_DETAILS {
+            self.seen.insert(entry.clone());
             self.entries.push(entry);
+        } else {
+            self.omitted = self.omitted.saturating_add(1);
         }
     }
 
-    fn finish(self) -> Vec<String> {
+    fn finish(mut self) -> Vec<String> {
+        if self.omitted != 0 {
+            self.entries.push(format!(
+                "{} additional dropped entries omitted",
+                self.omitted
+            ));
+        }
         self.entries
     }
 }
@@ -651,9 +676,11 @@ fn write_xlsx_cell(
     worksheet: &mut Worksheet,
     formats: &mut HashMap<FormatKey, Format>,
     styles: &[CellStyle],
+    sheet_name: &str,
     row: u32,
     column: u32,
     cell: &WindowCell,
+    cached_formula_result: Option<&str>,
     dropped: &mut Dropped,
     out: &Path,
 ) -> Result<(), WriteError> {
@@ -664,7 +691,7 @@ fn write_xlsx_cell(
 
     if let Some(formula_text) = &cell.f {
         let mut formula = Formula::new(formula_text);
-        if let Some(result) = formula_result(cell, row, column)? {
+        if let Some(result) = cached_formula_result {
             formula = formula.set_result(result);
         }
         match format {
@@ -678,12 +705,16 @@ fn write_xlsx_cell(
                 .map_err(|error| xlsx_error("write formula cell", out, error)),
         }
     } else {
-        write_xlsx_value(worksheet, row, column, cell, format, dropped, out)
+        write_xlsx_value(
+            worksheet, sheet_name, row, column, cell, format, dropped, out,
+        )
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_xlsx_value(
     worksheet: &mut Worksheet,
+    sheet_name: &str,
     row: u32,
     column: u16,
     cell: &WindowCell,
@@ -701,9 +732,11 @@ fn write_xlsx_value(
             worksheet.write_number(row, column, *value)
         }
         (CellType::S, Some(CellValue::Text(value)), Some(format)) => {
+            let value = truncate_xlsx_string(value, sheet_name, row, column, "string", dropped);
             worksheet.write_string_with_format(row, column, value, format)
         }
         (CellType::S, Some(CellValue::Text(value)), None) => {
+            let value = truncate_xlsx_string(value, sheet_name, row, column, "string", dropped);
             worksheet.write_string(row, column, value)
         }
         (CellType::B, Some(CellValue::Bool(value)), Some(format)) => {
@@ -714,10 +747,12 @@ fn write_xlsx_value(
         }
         (CellType::E, Some(CellValue::Text(value)), Some(format)) => {
             dropped.add("error cells written as text");
+            let value = truncate_xlsx_string(value, sheet_name, row, column, "error text", dropped);
             worksheet.write_string_with_format(row, column, value, format)
         }
         (CellType::E, Some(CellValue::Text(value)), None) => {
             dropped.add("error cells written as text");
+            let value = truncate_xlsx_string(value, sheet_name, row, column, "error text", dropped);
             worksheet.write_string(row, column, value)
         }
         (CellType::D, Some(CellValue::Text(value)), Some(format)) => {
@@ -848,13 +883,29 @@ fn parse_color(value: &str, style_id: u32) -> Result<Color, WriteError> {
     Ok(Color::RGB(rgb))
 }
 
-fn formula_result(cell: &WindowCell, row: u32, column: u16) -> Result<Option<String>, WriteError> {
+fn formula_result(
+    cell: &WindowCell,
+    sheet_name: &str,
+    row: u32,
+    column: u16,
+    dropped: &mut Dropped,
+) -> Result<Option<String>, WriteError> {
     match (&cell.t, &cell.v) {
         (_, None) => Ok(None),
         (CellType::N, Some(CellValue::Number(value))) if value.is_finite() => {
             Ok(Some(value.to_string()))
         }
-        (CellType::S | CellType::E, Some(CellValue::Text(value))) => Ok(Some(value.clone())),
+        (CellType::S | CellType::E, Some(CellValue::Text(value))) => Ok(Some(
+            truncate_xlsx_string(
+                value,
+                sheet_name,
+                row,
+                column,
+                "cached formula string",
+                dropped,
+            )
+            .to_owned(),
+        )),
         (CellType::B, Some(CellValue::Bool(true))) => Ok(Some("1".to_owned())),
         (CellType::B, Some(CellValue::Bool(false))) => Ok(Some("0".to_owned())),
         (CellType::D, Some(CellValue::Text(value))) => Ok(Some(
@@ -869,6 +920,33 @@ fn formula_result(cell: &WindowCell, row: u32, column: u16) -> Result<Option<Str
         )),
         (cell_type, Some(value)) => Err(type_mismatch(row, column, *cell_type, value)),
     }
+}
+
+fn truncate_xlsx_string<'a>(
+    value: &'a str,
+    sheet_name: &str,
+    row: u32,
+    column: u16,
+    kind: &str,
+    dropped: &mut Dropped,
+) -> &'a str {
+    let Some((cut, _)) = value.char_indices().nth(XLSX_MAX_STRING_CHARS) else {
+        return value;
+    };
+    let original_chars = XLSX_MAX_STRING_CHARS + value[cut..].chars().count();
+    dropped.add(format!(
+        "cell {} {kind} truncated from {original_chars} to {XLSX_MAX_STRING_CHARS} characters",
+        qualified_cell_reference(sheet_name, row, column)
+    ));
+    &value[..cut]
+}
+
+fn qualified_cell_reference(sheet_name: &str, row: u32, column: u16) -> String {
+    format!(
+        "'{}'!{}",
+        sheet_name.replace('\'', "''"),
+        cell_reference(row, column)
+    )
 }
 
 fn parse_datetime(value: &str, row: u32, column: u16) -> Result<ExcelDateTime, WriteError> {
@@ -1518,6 +1596,133 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_truncates_oversized_strings_on_character_boundaries_with_loud_drops() {
+        let exact = "a".repeat(XLSX_MAX_STRING_CHARS);
+        let oversized = "b".repeat(XLSX_MAX_STRING_CHARS + 1);
+        let multibyte = format!("{}éTAIL", "c".repeat(XLSX_MAX_STRING_CHARS - 1));
+        let cached_formula = "🙂".repeat(XLSX_MAX_STRING_CHARS + 1);
+        let store = store_with(
+            vec![sheet(
+                "Strings",
+                1,
+                4,
+                vec![
+                    cell(
+                        0,
+                        0,
+                        CellType::S,
+                        Some(CellValue::Text(exact.clone())),
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                    cell(
+                        0,
+                        1,
+                        CellType::S,
+                        Some(CellValue::Text(oversized)),
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                    cell(
+                        0,
+                        2,
+                        CellType::S,
+                        Some(CellValue::Text(multibyte)),
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                    cell(
+                        0,
+                        3,
+                        CellType::S,
+                        Some(CellValue::Text(cached_formula)),
+                        None,
+                        Some(r#""cached""#),
+                        None,
+                        None,
+                    ),
+                ],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("long-strings.xlsx");
+
+        let outcome = write_xlsx(&store, &out, &AtomicBool::new(false))
+            .expect("oversized strings should truncate without failing the export");
+
+        assert_eq!(
+            outcome.dropped,
+            [
+                "cell 'Strings'!B1 string truncated from 32768 to 32767 characters",
+                "cell 'Strings'!C1 string truncated from 32771 to 32767 characters",
+                "cell 'Strings'!D1 cached formula string truncated from 32768 to 32767 characters",
+            ]
+        );
+        let actual = read_xlsx(&out);
+        let actual = cells_by_position(&actual, 0);
+        assert_eq!(actual[&(0, 0)].v, Some(CellValue::Text(exact)));
+        assert_eq!(
+            actual[&(0, 1)].v,
+            Some(CellValue::Text("b".repeat(XLSX_MAX_STRING_CHARS)))
+        );
+        assert_eq!(
+            actual[&(0, 2)].v,
+            Some(CellValue::Text(format!(
+                "{}é",
+                "c".repeat(XLSX_MAX_STRING_CHARS - 1)
+            )))
+        );
+        assert_eq!(
+            actual[&(0, 3)].v,
+            Some(CellValue::Text("🙂".repeat(XLSX_MAX_STRING_CHARS)))
+        );
+        assert_eq!(actual[&(0, 3)].f.as_deref(), Some(r#""cached""#));
+    }
+
+    #[test]
+    fn dropped_details_are_deduplicated_bounded_and_count_overflow() {
+        let mut dropped = Dropped::default();
+        for index in 0..MAX_DROPPED_DETAILS + 3 {
+            dropped.add(format!("drop {index}"));
+        }
+        dropped.add("drop 0");
+
+        let entries = dropped.finish();
+
+        assert_eq!(entries.len(), MAX_DROPPED_DETAILS + 1);
+        assert_eq!(entries.first().map(String::as_str), Some("drop 0"));
+        assert_eq!(
+            entries.last().map(String::as_str),
+            Some("3 additional dropped entries omitted")
+        );
+    }
+
+    #[test]
+    fn truncation_drops_keep_same_cell_reference_on_different_sheets_distinct() {
+        let value = "x".repeat(XLSX_MAX_STRING_CHARS + 1);
+        let mut dropped = Dropped::default();
+
+        truncate_xlsx_string(&value, "First", 0, 0, "string", &mut dropped);
+        truncate_xlsx_string(&value, "Second", 0, 0, "string", &mut dropped);
+
+        assert_eq!(
+            dropped.finish(),
+            [
+                "cell 'First'!A1 string truncated from 32768 to 32767 characters",
+                "cell 'Second'!A1 string truncated from 32768 to 32767 characters",
+            ]
+        );
+    }
+
+    #[test]
     fn xlsx_deduplicates_format_pairs_and_maps_basic_styles() {
         let style = CellStyle {
             bold: true,
@@ -1942,6 +2147,39 @@ mod tests {
                 "column widths",
             ]
         );
+    }
+
+    #[test]
+    fn csv_preserves_strings_beyond_the_xlsx_character_limit() {
+        let value = "é".repeat(XLSX_MAX_STRING_CHARS + 1);
+        let store = store_with(
+            vec![sheet(
+                "CSV",
+                1,
+                1,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::S,
+                    Some(CellValue::Text(value.clone())),
+                    None,
+                    None,
+                    None,
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("long-string.csv");
+
+        write_csv(&store, 0, &out, &AtomicBool::new(false))
+            .expect("CSV should keep the full string");
+
+        let mut expected = value.into_bytes();
+        expected.extend_from_slice(b"\r\n");
+        assert_eq!(std::fs::read(out).unwrap(), expected);
     }
 
     #[test]

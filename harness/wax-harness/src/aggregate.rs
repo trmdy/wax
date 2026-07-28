@@ -322,7 +322,15 @@ fn aggregate_round_trip(
     let has_available_evidence = attempted
         .iter()
         .any(|round_trip| export_stage_succeeded(round_trip));
-    let export_unavailable = unavailable != 0 && !has_available_evidence;
+    let has_loud_export_failure = attempted.iter().any(|round_trip| {
+        round_trip.status == "failed"
+            && round_trip
+                .error
+                .as_ref()
+                .is_some_and(|error| error.stage == "export")
+    });
+    let export_unavailable =
+        unavailable != 0 && !has_available_evidence && !has_loud_export_failure;
 
     let status = RoundTripStatusMetric {
         status: if export_unavailable {
@@ -784,8 +792,8 @@ mod tests {
             status: "xlsxExportUnavailable".to_owned(),
             error: Some(RoundTripFailure {
                 stage: "export".to_owned(),
-                code: "internal".to_owned(),
-                msg: "writer stub".to_owned(),
+                code: "process_exit".to_owned(),
+                msg: "unknown command export".to_owned(),
             }),
             ..RoundTripFileMetrics::default()
         });
@@ -826,8 +834,8 @@ mod tests {
             status: "xlsxExportUnavailable".to_owned(),
             error: Some(RoundTripFailure {
                 stage: "export".to_owned(),
-                code: "internal".to_owned(),
-                msg: "writer stub".to_owned(),
+                code: "process_exit".to_owned(),
+                msg: "unknown command export".to_owned(),
             }),
             ..RoundTripFileMetrics::default()
         });
@@ -853,6 +861,53 @@ mod tests {
         assert_eq!(round_trip.files_clean.percent, None);
         assert_eq!(round_trip.value_match.percent, None);
         assert_eq!(round_trip.oracle_open_rate.percent, None);
+    }
+
+    #[test]
+    fn internal_export_failure_keeps_the_round_trip_section_loud() {
+        let mut results = vec![
+            file(
+                "xlsx",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+            file(
+                "xls",
+                true,
+                true,
+                CountMetric::default(),
+                CountMetric::default(),
+            ),
+        ];
+        results[0].round_trip = Some(RoundTripFileMetrics {
+            status: "xlsxExportUnavailable".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "process_exit".to_owned(),
+                msg: "unknown command export".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+        results[1].round_trip = Some(RoundTripFileMetrics {
+            status: "failed".to_owned(),
+            error: Some(RoundTripFailure {
+                stage: "export".to_owned(),
+                code: "internal".to_owned(),
+                msg: "live writer regression".to_owned(),
+            }),
+            ..RoundTripFileMetrics::default()
+        });
+
+        let scoreboard = aggregate(&results, 0, "2026-07-28T00:00:00Z");
+        let round_trip = scoreboard.metrics.round_trip.unwrap();
+
+        assert_eq!(round_trip.status.status, "available");
+        assert_eq!(round_trip.status.reason, None);
+        assert_eq!(round_trip.files_clean.matched, 0);
+        assert_eq!(round_trip.files_clean.total, 2);
+        assert_eq!(round_trip.files_clean.percent, Some(0.0));
     }
 
     fn request(id: u64, op: &str, wall_ms: f64) -> ServeRequestMetric {
