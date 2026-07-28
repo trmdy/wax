@@ -175,10 +175,43 @@ fn preflight_legacy_cfb(
         ));
     }
 
-    preflight_biff_records(path, options)
+    // The header's sector-count fields drive up-front allocations in CFB
+    // readers (calamine allocates `num_fat_sectors * 4` bytes before reading
+    // any of them). None of these counts can exceed the number of sectors
+    // that physically fit in the container.
+    let total_sectors = input_bytes / sector_bytes;
+    let header_count = |offset: usize| {
+        u64::from(u32::from_le_bytes(
+            header[offset..offset + 4]
+                .try_into()
+                .expect("header is 512 bytes"),
+        ))
+    };
+    for (offset, field) in [
+        (0x28, "directory sector"),
+        (0x2C, "FAT sector"),
+        (0x40, "mini-FAT sector"),
+        (0x48, "DIFAT sector"),
+    ] {
+        let declared = header_count(offset);
+        if declared > total_sectors {
+            return Err(SafetyError::new(
+                ErrorCode::BadZip,
+                format!(
+                    "XLS compound document declares {declared} {field}s but only {total_sectors} sectors fit in the container"
+                ),
+            ));
+        }
+    }
+
+    preflight_biff_records(path, input_bytes, options)
 }
 
-fn preflight_biff_records(path: &Path, options: ReaderOptions) -> Result<(), SafetyError> {
+fn preflight_biff_records(
+    path: &Path,
+    input_bytes: u64,
+    options: ReaderOptions,
+) -> Result<(), SafetyError> {
     const MAX_BIFF_RECORDS: usize = 5_000_000;
 
     let mut compound = cfb::OpenOptions::new()
@@ -190,6 +223,18 @@ fn preflight_biff_records(path: &Path, options: ReaderOptions) -> Result<(), Saf
                 format!("invalid XLS compound document: {error}"),
             )
         })?;
+    for entry in compound.walk() {
+        if entry.is_stream() && entry.len() > input_bytes {
+            return Err(SafetyError::new(
+                ErrorCode::BadZip,
+                format!(
+                    "XLS compound document declares a {} byte stream {} inside a {input_bytes} byte container",
+                    entry.len(),
+                    entry.path().display(),
+                ),
+            ));
+        }
+    }
     let workbook_path = compound
         .walk()
         .find(|entry| {
@@ -269,6 +314,25 @@ fn preflight_biff_records(path: &Path, options: ReaderOptions) -> Result<(), Saf
         }
         if kind == 0x0200 {
             check_declared_extent(&data, options.max_declared_cells)?;
+        }
+        if kind == 0x0085 {
+            if data.len() < 4 {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    "BIFF BOUNDSHEET record is shorter than 4 bytes",
+                ));
+            }
+            let offset = u64::from(u32::from_le_bytes(
+                data[..4].try_into().expect("four bytes checked"),
+            ));
+            if offset > stream_bytes {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!(
+                        "BIFF BOUNDSHEET declares sheet offset {offset} beyond the {stream_bytes} byte Workbook stream"
+                    ),
+                ));
+            }
         }
     }
 
@@ -804,6 +868,30 @@ mod tests {
 
         assert_eq!(error.code(), ErrorCode::BadZip);
         assert!(error.message().contains("BOF"));
+    }
+
+    #[test]
+    fn legacy_biff_rejects_the_boundsheet_offset_fuzz_regression() {
+        let error = preflight_path(
+            &legacy_seed("calamine-boundsheet-offset.xls"),
+            ReaderOptions::default(),
+        )
+        .expect_err("out-of-stream BOUNDSHEET offset should be rejected before calamine");
+
+        assert_eq!(error.code(), ErrorCode::BadZip);
+        assert!(error.message().contains("BOUNDSHEET"));
+    }
+
+    #[test]
+    fn legacy_cfb_rejects_the_fat_count_lie_fuzz_regression() {
+        let error = preflight_path(
+            &legacy_seed("calamine-fat-count-lie.xls"),
+            ReaderOptions::default(),
+        )
+        .expect_err("lying FAT sector count should be rejected before calamine allocates");
+
+        assert_eq!(error.code(), ErrorCode::BadZip);
+        assert!(error.message().contains("FAT sector"));
     }
 
     #[test]
