@@ -127,7 +127,7 @@
       "branch": "agent/wax-w2c-harness",
       "worktree": ".worktrees/w2c",
       "bee": "wax-w2c",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "harness/wax-harness/**",
         "harness/run.sh"
