@@ -220,15 +220,15 @@
       "title": "Writer core: model -> styled xlsx (rust_xlsxwriter) + CSV behind the frozen wax-write API",
       "branch": "agent/wax-w4a-writer",
       "worktree": ".worktrees/w4a",
-      "bee": "wax-w4a",
-      "state": "planned",
+      "bee": "wax-w4a8",
+      "state": "working",
       "owns": [
         "crates/wax-write/**",
         "Cargo.toml (rust_xlsxwriter dep)",
         "Cargo.lock"
       ],
       "brief": "docs/briefs/w4a.md",
-      "beeId": null
+      "beeId": "CO.1d3f"
     },
     {
       "id": "w4b",
@@ -236,15 +236,15 @@
       "title": "Round-trip validation (wax write -> wax+oracle read -> compare) + soffice checks + scoreboard rows",
       "branch": "agent/wax-w4b-roundtrip",
       "worktree": ".worktrees/w4b",
-      "bee": "wax-w4b",
-      "state": "planned",
+      "bee": "wax-w4b5",
+      "state": "working",
       "owns": [
         "harness/wax-harness/**",
         "harness/run.sh",
         "harness/adjudications.md (append-only)"
       ],
       "brief": "docs/briefs/w4b.md",
-      "beeId": null
+      "beeId": "CO.0fc1"
     },
     {
       "id": "w4c",
@@ -252,8 +252,8 @@
       "title": "Serve export xlsx wiring + `wax export` subcommand + CI-green duty",
       "branch": "agent/wax-w4c-export",
       "worktree": ".worktrees/w4c",
-      "bee": "wax-w4c",
-      "state": "planned",
+      "bee": "wax-w4c5",
+      "state": "working",
       "owns": [
         "crates/wax-cli/**",
         "crates/wax-proto/** (no wire changes without sign-off)",
@@ -261,7 +261,7 @@
         ".github/**"
       ],
       "brief": "docs/briefs/w4c.md",
-      "beeId": null
+      "beeId": "CO.b13"
     },
     {
       "id": "w4d",
@@ -269,17 +269,17 @@
       "title": "Reader extraction: xlsx column widths + basic styles into the W4 model fields",
       "branch": "agent/wax-w4d-styles",
       "worktree": ".worktrees/w4d",
-      "bee": "wax-w4d",
-      "state": "planned",
+      "bee": "wax-w4d5",
+      "state": "working",
       "owns": [
         "crates/wax-read/**",
         "crates/wax-core/** (additive, sign-off)",
         "crates/wax-store/** (additive, sign-off)"
       ],
       "brief": "docs/briefs/w4d.md",
-      "beeId": null
+      "beeId": "CO.c173"
     }
   ],
-  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest. W3 addendum: original wax-w3c (CO.a5b) wedged mid-turn three times at the long-fuzz-rerun step and stopped responding to sends; retired 2026-07-28 with its nearly-finished work coordinator-checkpointed as wip commit d1757f4 on agent/wax-w3c-safety; replacement wax-w3c2 spawned into the same worktree to finish (short smokes, checks, seal). W3C required coordinator takeover: two successive codex bees (CO.a5b, CO.9821) wedged mid-turn at the fuzz step; CO.a5b's work was checkpointed as d1757f4 and the coordinator finished, corpus-fitted (126 false rejections removed), and merged the shard.",
-  "waveStatus": "W4 (writer) IN PLANNING 2026-07-28, operator go received by coordinator CL.6cbf. Coordinator scaffold on main before spawns: additive W4 model fields (Cell.s, Sheet.colInfos, Document.styles/CellStyle - invisible when absent, dump byte-compat pinned by test), store retention + writer accessors (styles/sheet_col_infos/sheet_merges/scan_sheet, WindowCell.s), frozen wax-write API (write_xlsx/write_csv) stubbed with structured errors. docs/w4-contracts.md is the binding seam doc; four shards planned (w4a writer, w4b roundtrip, w4c export wiring + CI duty, w4d xlsx styles/width extraction). LibreOffice 26.2 installed for soffice gate checks. Repo now public (github.com:trmdy/wax), CI live and green on main at planning start. Prior wave: W3 GATE PASSED 2026-07-28. Harness serve client drives open/meta/window/export/stats/close over stdio against the full corpus: open-via-serve 95.69% (1956/2044, exactly matching dump opens), window latency p50 7.70ms / p95 12.26ms, serve peak RSS p50 3.03MiB. Peak RSS max 1.00GiB -> 662.25MiB (POI 51535 extent bomb now guarded: 1,077,821,440 -> 2,424,832 bytes). Store: 5M cells = 144.6MiB retained, window p95 21us. Fuzz: 3 cargo-fuzz targets seeded + wired into check.sh (deterministic seed/artifact replay) and CI; 5 calamine defects guarded with regression tests; 1 open finding quarantined in fuzz/known-findings (calamine unbounded FAT growth, 5.6KB -> 87GiB RSS, contained by the wall-clock timeout; W5 fix options recorded). Display match 76.15% -> 97.09% corpus-wide (W3E). Per-ext formula fidelity now visible (xlsx 99.88%). All five shards merged, reviewed (docs/review/w3{a,b,c,d,e}.md) and retired. W4 (writer) NOT started - awaits explicit operator go."
+  "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest. W3 addendum: original wax-w3c (CO.a5b) wedged mid-turn three times at the long-fuzz-rerun step and stopped responding to sends; retired 2026-07-28 with its nearly-finished work coordinator-checkpointed as wip commit d1757f4 on agent/wax-w3c-safety; replacement wax-w3c2 spawned into the same worktree to finish (short smokes, checks, seal). W3C required coordinator takeover: two successive codex bees (CO.a5b, CO.9821) wedged mid-turn at the fuzz step; CO.a5b's work was checkpointed as d1757f4 and the coordinator finished, corpus-fitted (126 false rejections removed), and merged the shard. W4 addendum: HIVE-81 (honeybee bug, operator-filed) wedged EVERY detached codex spawn at the app-server handshake on 2026-07-28 midday - 2 canaries + 16 staggered retries all died with zero output; root cause was the spawn executing in a detached bee shell. Working path per CL.161: run hive spawn from the coordinator's apiary shelf terminal (user-session context) via terminal_spawn/terminal_write; all four W4 bees then booted in seconds (canary wax-w4a8 first). Codex trust-dialog on first boot per home answered via tmux send-keys Enter. Shelf terminal surface is ephemeral - one immediate command per write, re-list ptyId each time, no sleep-chains.",
+  "waveStatus": "W4 (writer) ROLLING 2026-07-28, operator go received by coordinator CL.6cbf. Coordinator scaffold on main before spawns: additive W4 model fields (Cell.s, Sheet.colInfos, Document.styles/CellStyle - invisible when absent, dump byte-compat pinned by test), store retention + writer accessors (styles/sheet_col_infos/sheet_merges/scan_sheet, WindowCell.s), frozen wax-write API (write_xlsx/write_csv) stubbed with structured errors. docs/w4-contracts.md is the binding seam doc; four shards planned (w4a writer, w4b roundtrip, w4c export wiring + CI duty, w4d xlsx styles/width extraction). LibreOffice 26.2 installed for soffice gate checks. Repo now public (github.com:trmdy/wax), CI live and green on main at planning start. Prior wave: W3 GATE PASSED 2026-07-28. Harness serve client drives open/meta/window/export/stats/close over stdio against the full corpus: open-via-serve 95.69% (1956/2044, exactly matching dump opens), window latency p50 7.70ms / p95 12.26ms, serve peak RSS p50 3.03MiB. Peak RSS max 1.00GiB -> 662.25MiB (POI 51535 extent bomb now guarded: 1,077,821,440 -> 2,424,832 bytes). Store: 5M cells = 144.6MiB retained, window p95 21us. Fuzz: 3 cargo-fuzz targets seeded + wired into check.sh (deterministic seed/artifact replay) and CI; 5 calamine defects guarded with regression tests; 1 open finding quarantined in fuzz/known-findings (calamine unbounded FAT growth, 5.6KB -> 87GiB RSS, contained by the wall-clock timeout; W5 fix options recorded). Display match 76.15% -> 97.09% corpus-wide (W3E). Per-ext formula fidelity now visible (xlsx 99.88%). All five shards merged, reviewed (docs/review/w3{a,b,c,d,e}.md) and retired. W4 (writer) NOT started - awaits explicit operator go."
 }
