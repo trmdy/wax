@@ -37,7 +37,7 @@
       "branch": "agent/wax-w1b-corpus",
       "worktree": ".worktrees/w1b",
       "bee": "wax-w1b",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "corpus/**"
       ],
