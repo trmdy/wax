@@ -1,7 +1,7 @@
 {
   "mission": "wax-v1",
-  "wave": "W4",
-  "coordinator": "CL.6cbf",
+  "wave": "W5",
+  "coordinator": "CL.7c63",
   "updated": "2026-07-28",
   "states": [
     "planned",
@@ -278,8 +278,69 @@
       ],
       "brief": "docs/briefs/w4d.md",
       "beeId": "CO.c173"
+    },
+    {
+      "id": "w5a",
+      "slug": "fuzz",
+      "title": "Fuzz burn-in (3x1800s) + calamine unbounded-FAT containment fix + corpus-fit",
+      "branch": "agent/wax-w5a-fuzz",
+      "worktree": ".worktrees/w5a",
+      "bee": "wax-w5a",
+      "state": "planned",
+      "owns": [
+        "fuzz/**",
+        "crates/wax-read/src/safety.rs (+ lib.rs hooks)"
+      ],
+      "brief": "docs/briefs/w5a.md"
+    },
+    {
+      "id": "w5b",
+      "slug": "triage",
+      "title": "Corpus triage to green: open-failures + mismatch buckets fixed or adjudicated, ledger in docs/w5-triage.md",
+      "branch": "agent/wax-w5b-triage",
+      "worktree": ".worktrees/w5b",
+      "bee": "wax-w5b",
+      "state": "planned",
+      "owns": [
+        "crates/wax-read/** (except safety.rs)",
+        "crates/wax-fmt/**",
+        "harness/adjudications.md (append-only)",
+        "docs/w5-triage.md"
+      ],
+      "brief": "docs/briefs/w5b.md"
+    },
+    {
+      "id": "w5c",
+      "slug": "release",
+      "title": "Release CI: tag -> per-platform tarballs + SHA256SUMS + GitHub release; README; docs/vendoring.md",
+      "branch": "agent/wax-w5c-release",
+      "worktree": ".worktrees/w5c",
+      "bee": "wax-w5c",
+      "state": "planned",
+      "owns": [
+        ".github/**",
+        "scripts/**",
+        "README.md",
+        "docs/vendoring.md"
+      ],
+      "brief": "docs/briefs/w5c.md"
+    },
+    {
+      "id": "w5d",
+      "slug": "strings",
+      "title": "Oversized-string truncate-with-loud-drop writer policy + harness internal!=unavailable fix",
+      "branch": "agent/wax-w5d-strings",
+      "worktree": ".worktrees/w5d",
+      "bee": "wax-w5d",
+      "state": "planned",
+      "owns": [
+        "crates/wax-write/**",
+        "harness/wax-harness/**",
+        "docs/w4-contracts.md (append-only amendment)"
+      ],
+      "brief": "docs/briefs/w5d.md"
     }
   ],
   "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest. W3 addendum: original wax-w3c (CO.a5b) wedged mid-turn three times at the long-fuzz-rerun step and stopped responding to sends; retired 2026-07-28 with its nearly-finished work coordinator-checkpointed as wip commit d1757f4 on agent/wax-w3c-safety; replacement wax-w3c2 spawned into the same worktree to finish (short smokes, checks, seal). W3C required coordinator takeover: two successive codex bees (CO.a5b, CO.9821) wedged mid-turn at the fuzz step; CO.a5b's work was checkpointed as d1757f4 and the coordinator finished, corpus-fitted (126 false rejections removed), and merged the shard. W4 addendum: HIVE-81 (honeybee bug, operator-filed) wedged EVERY detached codex spawn at the app-server handshake on 2026-07-28 midday - 2 canaries + 16 staggered retries all died with zero output; root cause was the spawn executing in a detached bee shell. Working path per CL.161: run hive spawn from the coordinator's apiary shelf terminal (user-session context) via terminal_spawn/terminal_write; all four W4 bees then booted in seconds (canary wax-w4a8 first). Codex trust-dialog on first boot per home answered via tmux send-keys Enter. Shelf terminal surface is ephemeral - one immediate command per write, re-list ptyId each time, no sleep-chains.",
-  "waveStatus": "W4 GATE PASSED 2026-07-28. Writer live end-to-end: model -> styled xlsx (rust_xlsxwriter =0.96.0) + CSV behind the frozen wax-write seam; export (xlsx+csv) live over serve incl. CSV delegation; wax export --json CLI. Full-corpus validation (2044 files): round-trip value fidelity 99.56% (2065753/2074802, gate >=99%), display fidelity 99.93%, files clean 94.57% (1846/1952: 103 cell-level defect files counted in the fidelity numbers, 2 oversized-string writer failures, 1 zero-sheet, 4 truncated skips), oracle read-back open 100.00% (1949/1949), soffice-open 100.00% (185/185, LibreOffice 26.2 fresh-profile headless), zero round-trip merge defects. W4D styles/widths extraction: 546/666 xlsx styled, zero open regressions, +2.5% dump bytes (XF-0 base-style design approved). All four shards reviewed (docs/review/w4{a,b,c,d}.md, agent-assisted deep reviews with probe tests), fix-cycled, merged, retired; CI green on origin/main at every merge. Spawn day lost ~5h to HIVE-81 (detached HSR codex boots wedge at app-server handshake): 18 dead boot attempts before the shelf-terminal user-session spawn path landed. W5 (hardening + release) NOT started - awaits explicit operator go via successor coordinator. Prior wave: W3 GATE PASSED 2026-07-28."
+  "waveStatus": "W5 LIVE 2026-07-28 (operator go, coordinator CL.7c63): hardening + release. Shards: W5A fuzz burn-in + calamine FAT containment, W5B corpus triage to green, W5C release CI + README + vendoring doc, W5D 32k-string writer policy + harness classification. Coordinator closes with v0.1.0 tag, artifact verification on this machine, final scoreboard, W5 gate seal (mission ends at that seal; no W6). Spawn practice per HIVE-81 notes is mandatory: shelf-terminal spawns, one command per terminal_write, canary first, liveness via hive fleet --json. Prior waves: W4 GATE PASSED 2026-07-28 (round-trip 99.56% values / 99.93% display, soffice-open 100%, oracle read-back 100%; details in the W4 seal of CL.6cbf and SCOREBOARD.md), W3 GATE PASSED 2026-07-28."
 }
