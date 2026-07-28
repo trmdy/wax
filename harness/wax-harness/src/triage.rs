@@ -55,7 +55,110 @@ pub fn render_triage(results: &[FileMetrics], generated_at: &str) -> String {
         "Display mismatches by format code",
         display_mismatches,
     );
+    render_round_trip_merge_defects(&mut output, results);
+    render_oracle_read_back_defects(&mut output, results);
     output
+}
+
+fn render_round_trip_merge_defects(output: &mut String, results: &[FileMetrics]) {
+    writeln!(output, "\n## Round-trip merge defects\n").unwrap();
+    let private_count = results
+        .iter()
+        .filter(|result| {
+            result.private
+                && result
+                    .round_trip
+                    .as_ref()
+                    .is_some_and(|round_trip| !round_trip.merge_defects.is_empty())
+        })
+        .count();
+    let public: Vec<_> = results
+        .iter()
+        .filter(|result| {
+            !result.private
+                && result
+                    .round_trip
+                    .as_ref()
+                    .is_some_and(|round_trip| !round_trip.merge_defects.is_empty())
+        })
+        .collect();
+    if public.is_empty() && private_count == 0 {
+        writeln!(output, "No disagreements observed.").unwrap();
+        return;
+    }
+    if private_count != 0 {
+        writeln!(
+            output,
+            "{private_count} private file(s) had merge defects; paths are omitted.\n"
+        )
+        .unwrap();
+    }
+    if public.is_empty() {
+        return;
+    }
+    writeln!(output, "| File | Defect |").unwrap();
+    writeln!(output, "| --- | --- |").unwrap();
+    for result in public {
+        let round_trip = result
+            .round_trip
+            .as_ref()
+            .expect("filtered result must have round-trip metrics");
+        for defect in &round_trip.merge_defects {
+            writeln!(
+                output,
+                "| {} | {} |",
+                inline_code(&result.path),
+                inline_code(defect)
+            )
+            .unwrap();
+        }
+    }
+}
+
+fn render_oracle_read_back_defects(output: &mut String, results: &[FileMetrics]) {
+    writeln!(
+        output,
+        "\n## Oracle read-back failures on wax-clean exports\n"
+    )
+    .unwrap();
+    let defects: Vec<_> = results
+        .iter()
+        .filter(|result| {
+            !result.private
+                && result.round_trip.as_ref().is_some_and(|round_trip| {
+                    round_trip.is_clean() && round_trip.oracle_open == Some(false)
+                })
+        })
+        .collect();
+    if defects.is_empty() {
+        writeln!(output, "No disagreements observed.").unwrap();
+        return;
+    }
+    writeln!(
+        output,
+        "These are interoperability defects, not automatic losses against the wax model. Record adjudication evidence in `harness/adjudications.md`.\n"
+    )
+    .unwrap();
+    writeln!(output, "| File | Oracle error |").unwrap();
+    writeln!(output, "| --- | --- |").unwrap();
+    for result in defects {
+        let round_trip = result
+            .round_trip
+            .as_ref()
+            .expect("filtered result must have round-trip metrics");
+        let error = round_trip
+            .oracle_error
+            .as_ref()
+            .map(|error| format!("{}: {}", error.code, error.msg))
+            .unwrap_or_else(|| "unknown oracle failure".to_owned());
+        writeln!(
+            output,
+            "| {} | {} |",
+            inline_code(&result.path),
+            inline_code(&error)
+        )
+        .unwrap();
+    }
 }
 
 fn record_buckets(
@@ -171,6 +274,7 @@ mod tests {
                 truncated: false,
             },
             serve: None,
+            round_trip: None,
             cell_value_match: CountMetric::default(),
             wax_display_coverage: CoverageMetric::default(),
             sheetjs_display_coverage: CoverageMetric::default(),
@@ -210,6 +314,6 @@ mod tests {
     fn empty_triage_reports_each_category_as_clear() {
         let markdown = render_triage(&[], "2026-07-28T00:00:00Z");
 
-        assert_eq!(markdown.matches("No disagreements observed.").count(), 3);
+        assert_eq!(markdown.matches("No disagreements observed.").count(), 5);
     }
 }

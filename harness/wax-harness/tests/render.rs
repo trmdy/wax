@@ -106,3 +106,15 @@ fn committed_scoreboard_snapshot_matches_its_json_sources() {
         fs::read_to_string(repo_root.join("SCOREBOARD.md")).unwrap()
     );
 }
+
+#[test]
+fn legacy_scoreboard_fields_are_stable_when_round_trip_is_absent() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let original = fs::read(repo_root.join("harness/scoreboard.json")).unwrap();
+    let scoreboard: Scoreboard = serde_json::from_slice(&original).unwrap();
+    assert!(scoreboard.metrics.round_trip.is_none());
+
+    let original: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    let rendered = serde_json::to_value(&scoreboard).unwrap();
+    assert_eq!(rendered, original);
+}

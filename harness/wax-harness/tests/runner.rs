@@ -98,6 +98,18 @@ fn runner_records_three_fixture_files_including_a_tool_crash() {
         "unavailable"
     );
     assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["status"]["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["status"]["reason"],
+        "xlsx export unavailable"
+    );
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["filesClean"]["percent"],
+        Value::Null
+    );
+    assert_eq!(
         scoreboard["metrics"]["perExtension"]["ods"]["formulaFidelity"]["matched"],
         1
     );
@@ -154,8 +166,114 @@ fn run_sh_is_an_end_to_end_entry_point_for_the_fake_contract_tools() {
     assert!(markdown.contains("| serve peak RSS (p50 / max) | n/a (serve unavailable) | n/a |"));
     assert!(markdown.contains("<code>xlsx</code> (W2 gate)"));
     assert!(markdown.contains("## Top format-code display compatibility"));
+    assert!(markdown.contains("## Writer round-trip"));
+    assert!(markdown.contains("n/a (xlsx export unavailable)"));
     assert!(root.path().join("harness/format-coverage.json").is_file());
     assert!(root.path().join("harness/triage.md").is_file());
+}
+
+#[test]
+fn runner_collects_round_trip_oracle_and_soffice_metrics_with_mocked_export() {
+    let root = prepare_repo();
+    let output = harness_command(root.path())
+        .arg("--soffice")
+        .env("WAX_BIN", fixture("fake-wax-export.sh"))
+        .env("WAX_SOFFICE_BIN", fixture("fake-soffice.sh"))
+        .output()
+        .unwrap();
+    assert_success(output);
+
+    let scoreboard: Value =
+        serde_json::from_slice(&fs::read(root.path().join("harness/scoreboard.json")).unwrap())
+            .unwrap();
+    let round_trip = &scoreboard["metrics"]["roundTrip"];
+    assert_eq!(round_trip["status"]["status"], "available");
+    assert_eq!(round_trip["status"]["sofficeStatus"], "available");
+    assert_eq!(round_trip["filesClean"]["matched"], 1);
+    assert_eq!(round_trip["filesClean"]["total"], 2);
+    assert_eq!(round_trip["valueMatch"]["matched"], 1);
+    assert_eq!(round_trip["valueMatch"]["total"], 1);
+    assert_eq!(round_trip["displayMatch"]["matched"], 1);
+    assert_eq!(round_trip["displayMatch"]["total"], 1);
+    assert_eq!(round_trip["oracleOpenRate"]["matched"], 1);
+    assert_eq!(round_trip["oracleOpenRate"]["total"], 1);
+    assert_eq!(round_trip["sofficeOpenRate"]["matched"], 1);
+    assert_eq!(round_trip["sofficeOpenRate"]["total"], 1);
+    assert_eq!(round_trip["skippedTruncated"], 0);
+
+    let result_lines = fs::read_to_string(root.path().join("harness/results.jsonl")).unwrap();
+    let results: Vec<Value> = result_lines
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let clean = results
+        .iter()
+        .find(|result| result["id"] == "fixtures/match.xlsx")
+        .unwrap();
+    assert_eq!(clean["roundTrip"]["status"], "clean");
+    let failed = results
+        .iter()
+        .find(|result| result["id"] == "fixtures/diff.xlsx")
+        .unwrap();
+    assert_eq!(failed["roundTrip"]["status"], "failed");
+    assert_eq!(failed["roundTrip"]["error"]["stage"], "export");
+
+    let markdown = fs::read_to_string(root.path().join("SCOREBOARD.md")).unwrap();
+    assert!(markdown.contains("| round-trip files clean % | 50.00% (1/2) |"));
+    assert!(markdown.contains("| oracle read-back open % | 100.00% (1/1) |"));
+    assert!(markdown.contains("| soffice-open rate | 100.00% (1/1) |"));
+}
+
+#[test]
+fn structured_internal_export_error_degrades_the_whole_section_to_na() {
+    let root = prepare_repo();
+    let output = harness_command(root.path())
+        .env("WAX_BIN", fixture("fake-wax-export.sh"))
+        .env("WAX_FAKE_EXPORT_INTERNAL", "1")
+        .output()
+        .unwrap();
+    assert_success(output);
+
+    let scoreboard: Value =
+        serde_json::from_slice(&fs::read(root.path().join("harness/scoreboard.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["status"]["status"],
+        "unavailable"
+    );
+    assert_eq!(scoreboard["metrics"]["roundTrip"]["filesClean"]["total"], 2);
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["filesClean"]["percent"],
+        Value::Null
+    );
+    let markdown = fs::read_to_string(root.path().join("SCOREBOARD.md")).unwrap();
+    assert_eq!(markdown.matches("n/a (xlsx export unavailable)").count(), 5);
+}
+
+#[test]
+fn enabled_but_missing_soffice_is_reported_as_na() {
+    let root = prepare_repo();
+    let output = harness_command(root.path())
+        .arg("--soffice")
+        .env("WAX_BIN", fixture("fake-wax-export.sh"))
+        .env("WAX_SOFFICE_BIN", root.path().join("missing-soffice"))
+        .output()
+        .unwrap();
+    assert_success(output);
+
+    let scoreboard: Value =
+        serde_json::from_slice(&fs::read(root.path().join("harness/scoreboard.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["status"]["sofficeStatus"],
+        "unavailable"
+    );
+    assert_eq!(
+        scoreboard["metrics"]["roundTrip"]["sofficeOpenRate"]["percent"],
+        Value::Null
+    );
+    let markdown = fs::read_to_string(root.path().join("SCOREBOARD.md")).unwrap();
+    assert!(markdown.contains("| soffice-open rate | n/a (soffice unavailable) |"));
 }
 
 #[test]

@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-if [ "${1:-}" = "serve" ]; then
-  echo "error: unrecognized subcommand 'serve'" >&2
+if [ "${1:-}" = "serve" ] || [ "${1:-}" = "export" ]; then
+  echo "error: unrecognized subcommand '${1:-}'" >&2
   exit 2
 fi
 

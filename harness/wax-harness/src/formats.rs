@@ -213,6 +213,7 @@ mod tests {
             wax: summary.clone(),
             sheetjs: summary,
             serve: None,
+            round_trip: None,
             cell_value_match: CountMetric::default(),
             wax_display_coverage: CoverageMetric::default(),
             sheetjs_display_coverage: CoverageMetric::default(),

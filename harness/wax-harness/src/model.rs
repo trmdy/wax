@@ -67,6 +67,8 @@ pub struct DumpDocument {
     pub truncated: bool,
     pub sheets: Vec<Sheet>,
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<CellStyle>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,6 +81,8 @@ pub struct Sheet {
     pub truncated: bool,
     pub merges: Vec<String>,
     pub cells: Vec<Cell>,
+    #[serde(default, rename = "colInfos")]
+    pub col_infos: Vec<ColInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,6 +95,35 @@ pub struct Cell {
     pub d: Option<String>,
     pub f: Option<String>,
     pub fmt: Option<String>,
+    #[serde(default)]
+    pub s: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ColInfo {
+    pub c: u32,
+    pub width: f64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct CellStyle {
+    #[serde(default)]
+    pub bold: bool,
+    #[serde(default)]
+    pub italic: bool,
+    #[serde(default)]
+    pub underline: bool,
+    #[serde(default)]
+    pub strike: bool,
+    #[serde(default)]
+    pub font_size: Option<f64>,
+    #[serde(default)]
+    pub font_name: Option<String>,
+    #[serde(default)]
+    pub font_color: Option<String>,
+    #[serde(default)]
+    pub fill_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +255,19 @@ impl DumpDocument {
 
         for (expected_index, sheet) in self.sheets.iter().enumerate() {
             sheet.validate(expected_index)?;
+            for cell in &sheet.cells {
+                if cell
+                    .s
+                    .is_some_and(|style| style as usize >= self.styles.len())
+                {
+                    return Err(SchemaError::new(format!(
+                        "sheet[{expected_index}] cell ({}, {}) references missing style {}",
+                        cell.r,
+                        cell.c,
+                        cell.s.expect("checked style must be present")
+                    )));
+                }
+            }
         }
 
         let any_sheet_truncated = self.sheets.iter().any(|sheet| sheet.truncated);
@@ -384,6 +430,25 @@ mod tests {
         let document = parse(&valid_dump()).unwrap();
         assert!(document.ok);
         assert_eq!(document.sheets[0].cells.len(), 1);
+    }
+
+    #[test]
+    fn parses_additive_w4_style_and_column_width_fields() {
+        let mut value = valid_dump();
+        value["styles"] = json!([{
+            "bold": true,
+            "fontSize": 11.0,
+            "fillColor": "#FFCC00"
+        }]);
+        value["sheets"][0]["colInfos"] = json!([{"c": 0, "width": 17.25}]);
+        value["sheets"][0]["cells"][0]["s"] = json!(0);
+
+        let document = parse(&value).unwrap();
+
+        assert_eq!(document.styles.len(), 1);
+        assert!(document.styles[0].bold);
+        assert_eq!(document.sheets[0].col_infos[0].width, 17.25);
+        assert_eq!(document.sheets[0].cells[0].s, Some(0));
     }
 
     #[test]
