@@ -858,6 +858,7 @@ dependencies = [
  "wax-proto",
  "wax-read",
  "wax-store",
+ "wax-write",
 ]
 
 [[package]]

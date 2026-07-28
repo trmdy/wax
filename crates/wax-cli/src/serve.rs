@@ -6,7 +6,6 @@
 //! request, and deliberately abandons that worker; any late result is ignored.
 
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +21,7 @@ use wax_proto::{
 };
 use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
 use wax_store::{Window, WindowCell, WorkbookStore};
+use wax_write::ExportOutcome;
 
 use crate::peak_rss_bytes;
 
@@ -247,11 +247,11 @@ impl State {
                 })
             }
             Ok(WorkPayload::Window(window)) => Response::Window(window_response(result.id, window)),
-            Ok(WorkPayload::Export(bytes)) => Response::Export(ExportResponse {
+            Ok(WorkPayload::Export(outcome)) => Response::Export(ExportResponse {
                 id: result.id,
                 ok: true,
-                bytes,
-                dropped: CSV_DROPPED.iter().map(|item| (*item).to_owned()).collect(),
+                bytes: outcome.bytes,
+                dropped: outcome.dropped,
             }),
         })
     }
@@ -331,7 +331,7 @@ struct WorkResult {
 enum WorkPayload {
     Open(OpenedWorkbook),
     Window(Window),
-    Export(u64),
+    Export(ExportOutcome),
 }
 
 struct OpenedWorkbook {
@@ -499,13 +499,17 @@ fn dispatch(
                 Ok(handle) => handle,
                 Err(failure) => return Some(error_response(Some(id), failure.code, failure.msg)),
             };
-            if !format.eq_ignore_ascii_case("csv") {
+            let format = if format.eq_ignore_ascii_case("csv") {
+                ExportFormat::Csv
+            } else if format.eq_ignore_ascii_case("xlsx") {
+                ExportFormat::Xlsx
+            } else {
                 return Some(error_response(
                     Some(id),
                     ErrorCode::Unsupported,
                     format!("export format {format:?} is unsupported in protocol v0"),
                 ));
-            }
+            };
             if handle.store.sheet_meta(sheet).is_none() {
                 return Some(error_response(
                     Some(id),
@@ -524,8 +528,17 @@ fn dispatch(
             );
             let sender = worker_sender.clone();
             thread::spawn(move || {
-                let outcome = export_csv(&handle.store, sheet, Path::new(&out), &cancel)
-                    .map(WorkPayload::Export);
+                let outcome = match format {
+                    ExportFormat::Csv => export_csv(&handle.store, sheet, Path::new(&out), &cancel),
+                    ExportFormat::Xlsx => {
+                        wax_write::write_xlsx(&handle.store, Path::new(&out), &cancel)
+                            .map_err(writer_failure)
+                    }
+                }
+                .map(|mut outcome| {
+                    outcome.dropped.extend(handle.warnings);
+                    WorkPayload::Export(outcome)
+                });
                 let _ = sender.send(WorkResult { id, outcome });
             });
             None
@@ -569,6 +582,12 @@ fn dispatch(
             }))
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum ExportFormat {
+    Xlsx,
+    Csv,
 }
 
 fn open_workbook(
@@ -679,20 +698,25 @@ fn export_csv(
     sheet: u32,
     out: &Path,
     cancel: &AtomicBool,
-) -> Result<u64, Failure> {
+) -> Result<ExportOutcome, Failure> {
+    checkpoint(cancel)?;
     let meta = store.sheet_meta(sheet).ok_or_else(|| {
         Failure::new(
             ErrorCode::BadRequest,
             format!("sheet index {sheet} is out of range"),
         )
     })?;
-    let file = File::create(out).map_err(|error| {
+    let parent = out
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| {
         Failure::new(
             ErrorCode::Internal,
             format!("could not create {}: {error}", out.display()),
         )
     })?;
-    let mut output = BufWriter::new(file);
+    let mut output = BufWriter::new(temporary.as_file_mut());
 
     if meta.cols == 0 {
         for _ in 0..meta.rows {
@@ -735,17 +759,36 @@ fn export_csv(
     output
         .flush()
         .map_err(|error| csv_write_error(out, error))?;
-    output
+    let bytes = output
         .get_ref()
         .metadata()
         .map(|metadata| metadata.len())
-        .map_err(|error| csv_write_error(out, error))
+        .map_err(|error| csv_write_error(out, error))?;
+    drop(output);
+    checkpoint(cancel)?;
+    temporary.persist(out).map_err(|error| {
+        Failure::new(
+            ErrorCode::Internal,
+            format!("could not write {}: {}", out.display(), error.error),
+        )
+    })?;
+    Ok(ExportOutcome {
+        bytes,
+        dropped: CSV_DROPPED.iter().map(|item| (*item).to_owned()).collect(),
+    })
 }
 
 fn csv_write_error(out: &Path, error: io::Error) -> Failure {
     Failure::new(
         ErrorCode::Internal,
         format!("could not write {}: {error}", out.display()),
+    )
+}
+
+fn writer_failure(error: wax_write::WriteError) -> Failure {
+    Failure::new(
+        ErrorCode::from_code(&error.code).unwrap_or(ErrorCode::Internal),
+        error.msg,
     )
 }
 
@@ -911,5 +954,25 @@ mod tests {
             checkpoint(&cancel).expect_err("cancel should fail").code,
             ErrorCode::Cancelled
         );
+    }
+
+    #[test]
+    fn cancelled_csv_export_leaves_no_output_file() {
+        let store = store_with_cell(Cell {
+            s: None,
+            r: 0,
+            c: 0,
+            t: CellType::S,
+            v: Some(CellValue::Text("value".to_owned())),
+            d: None,
+            f: None,
+            fmt: None,
+        });
+        let temp = tempfile::tempdir().expect("temp directory");
+        let out = temp.path().join("cancelled.csv");
+        let error = export_csv(&store, 0, &out, &AtomicBool::new(true))
+            .expect_err("cancelled export should fail");
+        assert_eq!(error.code, ErrorCode::Cancelled);
+        assert!(!out.exists(), "cancelled export left an output file");
     }
 }

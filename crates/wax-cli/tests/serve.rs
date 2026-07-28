@@ -93,17 +93,21 @@ fn fixture_path() -> PathBuf {
         .join("reader.xlsx")
 }
 
-fn open(server: &mut Server, id: u64) -> Value {
+fn open_path(server: &mut Server, id: u64, path: &Path) -> Value {
     server.send(json!({
         "id": id,
         "op": "open",
-        "path": fixture_path(),
+        "path": path,
         "timeoutMs": 10_000
     }));
     let response = server.receive();
     assert_eq!(response["id"], id);
     assert_eq!(response["ok"], true, "{response}");
     response
+}
+
+fn open(server: &mut Server, id: u64) -> Value {
+    open_path(server, id, &fixture_path())
 }
 
 #[test]
@@ -225,7 +229,7 @@ fn windows_clip_report_merges_and_reject_invalid_requests() {
 }
 
 #[test]
-fn csv_export_is_rfc_4180_and_xlsx_is_unsupported() {
+fn csv_export_is_rfc_4180_and_xlsx_reaches_writer_stub() {
     let temp = tempfile::tempdir().expect("temporary directory");
     let out = temp.path().join("reader.csv");
     let mut server = Server::start(&[]);
@@ -257,10 +261,129 @@ fn csv_export_is_rfc_4180_and_xlsx_is_unsupported() {
         "id":32,"op":"export","handle":"h1","format":"xlsx",
         "out":temp.path().join("copy.xlsx")
     }));
-    assert_eq!(server.receive()["code"], "unsupported");
+    let xlsx = server.receive();
+    assert_eq!(xlsx["code"], "internal");
+    assert!(xlsx["msg"]
+        .as_str()
+        .expect("message")
+        .contains("xlsx export is not implemented"));
     assert!(server.eof().success());
 }
 
+#[test]
+fn export_validates_handle_sheet_format_and_unwritable_output() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let mut server = Server::start(&[]);
+
+    server.send(json!({
+        "id": 33,
+        "op": "export",
+        "handle": "missing",
+        "format": "csv",
+        "out": temp.path().join("bad-handle.csv")
+    }));
+    assert_eq!(server.receive()["code"], "bad_handle");
+    open(&mut server, 34);
+
+    for (id, format) in [(35, "csv"), (36, "xlsx")] {
+        server.send(json!({
+            "id": id,
+            "op": "export",
+            "handle": "h1",
+            "format": format,
+            "out": temp.path().join(format!("bad-sheet.{format}")),
+            "sheet": 99
+        }));
+        assert_eq!(server.receive()["code"], "bad_request");
+    }
+
+    server.send(json!({
+        "id": 37,
+        "op": "export",
+        "handle": "h1",
+        "format": "pdf",
+        "out": temp.path().join("copy.pdf")
+    }));
+    assert_eq!(server.receive()["code"], "unsupported");
+
+    let unwritable = temp.path().join("missing-parent").join("copy.csv");
+    server.send(json!({
+        "id": 38,
+        "op": "export",
+        "handle": "h1",
+        "format": "csv",
+        "out": unwritable
+    }));
+    let failure = server.receive();
+    assert_eq!(failure["code"], "internal");
+    assert!(failure["msg"]
+        .as_str()
+        .expect("message")
+        .contains(&unwritable.display().to_string()));
+    assert!(!unwritable.exists());
+    assert!(server.eof().success());
+}
+
+#[test]
+fn export_appends_open_warnings_to_dropped() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("wax-read")
+        .join("tests")
+        .join("fixtures")
+        .join("date_1904.xlsb");
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let out = temp.path().join("date.csv");
+    let mut server = Server::start(&[]);
+    let opened = open_path(&mut server, 39, &fixture);
+    assert_eq!(
+        opened["warnings"],
+        json!(["xlsb merged regions are best-effort"])
+    );
+
+    server.send(json!({
+        "id":40,"op":"export","handle":"h1","format":"csv","out":out
+    }));
+    let exported = server.receive();
+    assert_eq!(exported["ok"], true);
+    assert_eq!(
+        exported["dropped"],
+        json!([
+            "formulas (cached values only)",
+            "number formatting beyond display strings",
+            "merges",
+            "xlsb merged regions are best-effort"
+        ])
+    );
+    assert!(server.eof().success());
+}
+
+#[test]
+#[ignore = "requires the W4A wax-write xlsx implementation"]
+fn xlsx_export_round_trips_values_and_merges() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let out = temp.path().join("copy.xlsx");
+    let mut server = Server::start(&[]);
+    open(&mut server, 80);
+    server.send(json!({
+        "id":81,"op":"export","handle":"h1","format":"xlsx","out":out
+    }));
+    let exported = server.receive();
+    assert_eq!(exported["ok"], true);
+    assert!(exported["bytes"].as_u64().expect("byte count") > 0);
+    assert!(server.eof().success());
+
+    let dumped = Command::new(env!("CARGO_BIN_EXE_wax"))
+        .args(["dump", "--json"])
+        .arg(&out)
+        .output()
+        .expect("wax dump should execute");
+    assert!(dumped.status.success());
+    let document: Value = serde_json::from_slice(&dumped.stdout).expect("dump should contain JSON");
+    assert_eq!(document["ok"], true);
+    assert_eq!(document["sheets"][0]["cells"][0]["v"], "Hello shared");
+    assert_eq!(document["sheets"][0]["merges"][0], "A3:B3");
+}
 #[test]
 fn caps_max_handles_and_idle_expiry_are_enforced() {
     let mut server = Server::start(&["--max-handles", "1", "--idle-timeout-ms", "30"]);

@@ -4,17 +4,21 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use wax_proto::PROTO_VERSION;
 use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
+use wax_store::WorkbookStore;
 
 mod serve;
 
 const USAGE: &str = "Usage:
   wax --version
   wax dump --json <file> [--max-cells N] [--max-bytes N] [--timeout-ms N]
+  wax export --json <in> <out> --format xlsx|csv [--sheet N] [--max-cells N] [--max-bytes N] [--timeout-ms N]
   wax serve [--idle-timeout-ms N] [--max-handles N]";
 
 fn main() -> ExitCode {
@@ -47,6 +51,7 @@ fn run() -> i32 {
 
     match command {
         Command::Dump(command) => run_dump(command),
+        Command::Export(command) => run_export(command),
         Command::Serve(config) => match serve::run(config) {
             Ok(()) => 0,
             Err(error) => {
@@ -101,9 +106,77 @@ fn run_dump(command: DumpCommand) -> i32 {
     0
 }
 
+fn run_export(command: ExportCommand) -> i32 {
+    let document = read_with_deadline(
+        CalamineReader,
+        &command.input,
+        ReaderOptions {
+            max_cells: command.max_cells,
+            max_bytes: command.max_bytes,
+            timeout_ms: command.timeout_ms,
+            ..ReaderOptions::default()
+        },
+    );
+    if !document.ok {
+        let error = document.error.unwrap_or_else(|| wax_core::DumpError {
+            code: "internal".to_owned(),
+            msg: "reader returned a failure without error details".to_owned(),
+        });
+        return write_export_json(json!({
+            "ok": false,
+            "code": error.code,
+            "msg": error.msg,
+        }));
+    }
+
+    let warnings = document.warnings.clone();
+    let store = WorkbookStore::from_document(document);
+    if store.sheet_meta(command.sheet).is_none() {
+        return write_export_json(json!({
+            "ok": false,
+            "code": "bad_request",
+            "msg": format!("sheet index {} is out of range", command.sheet),
+        }));
+    }
+
+    let cancel = AtomicBool::new(false);
+    let result = match command.format {
+        ExportFormat::Xlsx => wax_write::write_xlsx(&store, &command.output, &cancel),
+        ExportFormat::Csv => wax_write::write_csv(&store, command.sheet, &command.output, &cancel),
+    };
+    match result {
+        Ok(mut outcome) => {
+            outcome.dropped.extend(warnings);
+            write_export_json(json!({
+                "ok": true,
+                "bytes": outcome.bytes,
+                "dropped": outcome.dropped,
+            }))
+        }
+        Err(error) => write_export_json(json!({
+            "ok": false,
+            "code": error.code,
+            "msg": error.msg,
+        })),
+    }
+}
+
+fn write_export_json(value: serde_json::Value) -> i32 {
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    if let Err(error) = serde_json::to_writer(&mut output, &value)
+        .and_then(|()| output.write_all(b"\n").map_err(serde_json::Error::io))
+    {
+        eprintln!("wax: could not write export JSON: {error}");
+        return 1;
+    }
+    0
+}
+
 #[derive(Debug)]
 enum Command {
     Dump(DumpCommand),
+    Export(ExportCommand),
     Serve(serve::Config),
 }
 
@@ -115,9 +188,27 @@ struct DumpCommand {
     timeout_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ExportFormat {
+    Xlsx,
+    Csv,
+}
+
+#[derive(Debug)]
+struct ExportCommand {
+    input: PathBuf,
+    output: PathBuf,
+    format: ExportFormat,
+    sheet: u32,
+    max_cells: usize,
+    max_bytes: u64,
+    timeout_ms: u64,
+}
+
 fn parse_arguments(arguments: &[OsString]) -> Result<Command, String> {
     match arguments.first().and_then(|argument| argument.to_str()) {
         Some("dump") => parse_dump_arguments(arguments).map(Command::Dump),
+        Some("export") => parse_export_arguments(arguments).map(Command::Export),
         Some("serve") => parse_serve_arguments(arguments).map(Command::Serve),
         Some(command) => Err(format!("wax: unknown command `{command}`")),
         None => Err("wax: expected a command".to_owned()),
@@ -170,6 +261,89 @@ fn parse_dump_arguments(arguments: &[OsString]) -> Result<DumpCommand, String> {
     let path = path.ok_or_else(|| "wax: dump requires an input file".to_owned())?;
     Ok(DumpCommand {
         path,
+        max_cells,
+        max_bytes,
+        timeout_ms,
+    })
+}
+
+fn parse_export_arguments(arguments: &[OsString]) -> Result<ExportCommand, String> {
+    let mut saw_json = false;
+    let mut paths = Vec::with_capacity(2);
+    let mut format = None;
+    let mut sheet = 0;
+    let mut max_cells = ReaderOptions::default().max_cells;
+    let mut max_bytes = ReaderOptions::default().max_bytes;
+    let mut timeout_ms = ReaderOptions::default().timeout_ms;
+    let mut index = 1;
+    while index < arguments.len() {
+        match arguments[index].to_str() {
+            Some("--json") => saw_json = true,
+            Some("--format") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --format requires a value".to_owned())?;
+                format = Some(match value.to_str() {
+                    Some("xlsx") => ExportFormat::Xlsx,
+                    Some("csv") => ExportFormat::Csv,
+                    Some(value) => {
+                        return Err(format!(
+                            "wax: --format must be `xlsx` or `csv`, got `{value}`"
+                        ))
+                    }
+                    None => return Err("wax: --format must be valid UTF-8".to_owned()),
+                });
+            }
+            Some("--sheet") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --sheet requires a value".to_owned())?;
+                sheet = parse_number(value, "--sheet")?;
+            }
+            Some("--max-cells") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --max-cells requires a value".to_owned())?;
+                max_cells = parse_number(value, "--max-cells")?;
+            }
+            Some("--timeout-ms") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --timeout-ms requires a value".to_owned())?;
+                timeout_ms = parse_number(value, "--timeout-ms")?;
+            }
+            Some("--max-bytes") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --max-bytes requires a value".to_owned())?;
+                max_bytes = parse_number(value, "--max-bytes")?;
+            }
+            Some(flag) if flag.starts_with('-') => {
+                return Err(format!("wax: unknown option `{flag}`"));
+            }
+            _ if paths.len() < 2 => paths.push(PathBuf::from(&arguments[index])),
+            _ => return Err("wax: export accepts exactly one input and one output file".to_owned()),
+        }
+        index += 1;
+    }
+
+    if !saw_json {
+        return Err("wax: export requires --json".to_owned());
+    }
+    if paths.len() != 2 {
+        return Err("wax: export requires an input and output file".to_owned());
+    }
+    let format = format.ok_or_else(|| "wax: export requires --format xlsx|csv".to_owned())?;
+    Ok(ExportCommand {
+        input: paths.remove(0),
+        output: paths.remove(0),
+        format,
+        sheet,
         max_cells,
         max_bytes,
         timeout_ms,
@@ -317,6 +491,54 @@ mod tests {
             vec!["serve", "--idle-timeout-ms", "-1"],
         ] {
             assert!(parse_arguments(&args(&values)).is_err());
+        }
+    }
+
+    #[test]
+    fn export_options_and_paths_parse_in_any_order() {
+        let Command::Export(command) = parse_arguments(&args(&[
+            "export",
+            "--timeout-ms",
+            "20",
+            "in.xlsx",
+            "--format",
+            "csv",
+            "--json",
+            "--sheet",
+            "2",
+            "out.csv",
+            "--max-cells",
+            "3",
+            "--max-bytes",
+            "40",
+        ]))
+        .expect("should parse") else {
+            panic!("expected export command");
+        };
+        assert_eq!(command.input, PathBuf::from("in.xlsx"));
+        assert_eq!(command.output, PathBuf::from("out.csv"));
+        assert_eq!(command.format, ExportFormat::Csv);
+        assert_eq!(command.sheet, 2);
+        assert_eq!(command.max_cells, 3);
+        assert_eq!(command.max_bytes, 40);
+        assert_eq!(command.timeout_ms, 20);
+    }
+
+    #[test]
+    fn export_rejects_invalid_format_sheet_and_missing_arguments() {
+        for values in [
+            vec!["export", "--json", "in.xlsx", "out.xlsx", "--format", "pdf"],
+            vec![
+                "export", "--json", "in.xlsx", "out.xlsx", "--format", "xlsx", "--sheet", "-1",
+            ],
+            vec!["export", "--json", "in.xlsx", "--format", "xlsx"],
+            vec!["export", "in.xlsx", "out.xlsx", "--format", "xlsx"],
+            vec!["export", "--json", "in.xlsx", "out.xlsx"],
+        ] {
+            assert!(
+                parse_arguments(&args(&values)).is_err(),
+                "unexpectedly accepted {values:?}"
+            );
         }
     }
 }

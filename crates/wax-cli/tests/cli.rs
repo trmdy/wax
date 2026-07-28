@@ -14,6 +14,18 @@ fn fixture_path() -> PathBuf {
         .join("reader.xlsx")
 }
 
+fn json_stdout(output: &std::process::Output) -> serde_json::Value {
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout.lines().count(),
+        1,
+        "expected exactly one JSON line: {stdout:?}"
+    );
+    serde_json::from_slice(&output.stdout).expect("stdout should contain JSON")
+}
+
 #[test]
 fn version_includes_semver_and_protocol() {
     let output = wax().arg("--version").output().expect("wax should execute");
@@ -96,4 +108,128 @@ fn usage_error_exits_two_without_stdout() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("requires --json"));
+}
+
+#[test]
+fn help_includes_export_usage() {
+    let output = wax().arg("--help").output().expect("wax should execute");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert!(String::from_utf8_lossy(&output.stdout).contains(
+        "wax export --json <in> <out> --format xlsx|csv [--sheet N] \
+[--max-cells N] [--max-bytes N] [--timeout-ms N]"
+    ));
+}
+
+#[test]
+fn export_reader_failure_is_one_flat_json_line_and_exits_zero() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let input = temp.path().join("values.csv");
+    let output_path = temp.path().join("copy.xlsx");
+    std::fs::write(&input, "one,two\n").expect("fixture should be written");
+
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(&input)
+        .arg(&output_path)
+        .args(["--format", "xlsx"])
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["code"], "unsupported");
+    assert!(result["msg"].is_string());
+    assert!(result.get("error").is_none());
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn export_writer_failure_is_one_flat_json_line_and_exits_zero() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let output_path = temp.path().join("copy.xlsx");
+
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(fixture_path())
+        .arg(&output_path)
+        .args(["--format", "xlsx"])
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["code"], "internal");
+    assert!(result["msg"]
+        .as_str()
+        .expect("message")
+        .contains("xlsx export is not implemented"));
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn export_validates_sheet_range_before_writer_call() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let output_path = temp.path().join("copy.xlsx");
+
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(fixture_path())
+        .arg(&output_path)
+        .args(["--format", "xlsx", "--sheet", "99"])
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+
+    assert_eq!(result["ok"], false);
+    assert_eq!(result["code"], "bad_request");
+    assert!(result["msg"]
+        .as_str()
+        .expect("message")
+        .contains("sheet index 99"));
+}
+
+#[test]
+fn export_rejects_invalid_format_and_sheet_as_usage_errors() {
+    for arguments in [
+        vec!["export", "--json", "in.xlsx", "out.xlsx", "--format", "pdf"],
+        vec![
+            "export", "--json", "in.xlsx", "out.xlsx", "--format", "xlsx", "--sheet", "-1",
+        ],
+    ] {
+        let output = wax().args(arguments).output().expect("wax should execute");
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(!output.stderr.is_empty());
+    }
+}
+
+#[test]
+#[ignore = "requires the W4A wax-write xlsx implementation"]
+fn export_success_reports_json_and_produces_a_readable_workbook() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let output_path = temp.path().join("copy.xlsx");
+
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(fixture_path())
+        .arg(&output_path)
+        .args(["--format", "xlsx"])
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+    assert_eq!(result["ok"], true);
+    assert!(result["bytes"].as_u64().expect("byte count") > 0);
+    assert!(result["dropped"].is_array());
+
+    let dumped = wax()
+        .args(["dump", "--json"])
+        .arg(&output_path)
+        .output()
+        .expect("wax should execute");
+    let document = json_stdout(&dumped);
+    assert_eq!(document["ok"], true);
+    assert_eq!(document["sheets"][0]["cells"][0]["v"], "Hello shared");
+    assert_eq!(document["sheets"][0]["merges"][0], "A3:B3");
 }
