@@ -81,7 +81,7 @@
       "branch": "agent/wax-w1e-ci",
       "worktree": ".worktrees/w1e",
       "bee": "wax-w1e",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "scripts/**",
         ".github/**"
