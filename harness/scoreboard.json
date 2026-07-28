@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T02:50:44Z",
+  "generatedAt": "2026-07-28T02:52:58Z",
   "filesAttempted": 2048,
   "filesSkipped": 0,
   "metrics": {
@@ -23,9 +23,9 @@
     },
     "displayStringCoverage": {
       "wax": {
-        "matched": 0,
+        "matched": 2876829,
         "total": 2879603,
-        "percent": 0.0
+        "percent": 99.9036672763572
       },
       "sheetjs": {
         "matched": 2922256,
@@ -34,9 +34,9 @@
       }
     },
     "displayStringMatch": {
-      "matched": 0,
-      "total": 0,
-      "percent": null
+      "matched": 2190072,
+      "total": 2875970,
+      "percent": 76.1507247989374
     },
     "formulaFidelity": {
       "matched": 85580,
@@ -51,21 +51,21 @@
     "parseTimeMs": {
       "wax": {
         "p50": 0,
-        "p95": 2
+        "p95": 5
       },
       "sheetjs": {
         "p50": 8,
-        "p95": 65
+        "p95": 96
       }
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 2506752,
-        "max": 1076215808
+        "p50": 2621440,
+        "max": 1076248576
       },
       "sheetjs": {
         "p50": 93290496,
-        "max": 1247821824
+        "max": 1275232256
       }
     },
     "windowLatencyMs": {

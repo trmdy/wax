@@ -1,6 +1,6 @@
 # wax mismatch triage
 
-Generated: `2026-07-28T02:50:44Z`
+Generated: `2026-07-28T02:52:58Z`
 
 Files compared: 2048.
 
@@ -36,4 +36,25 @@ Counts include private corpus files; example paths deliberately omit them.
 
 ## Display mismatches by format code
 
-No disagreements observed.
+| Category | Occurrences | Example files |
+| --- | ---: | --- |
+| <code>#,##0 ;[Red](#,##0)</code> | 106056 | <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_12843-1.xls.xlsb</code>, <code>corpus/files/sheetjs/test_files/apachepoi_49156.xlsx.xlsb</code>, <code>corpus/files/sheetjs/test_files/apachepoi_53446.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_53446.xls.xlsb</code> |
+| <code>_("$"* #,##0.00_);_("$"* \(#,##0.00\);_("$"* "-"??_);_(@_)</code> | 67479 | <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/44636.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/57231_MixedGasReport.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/IfFunctionTestCaseData.xls</code> |
+| <code>#,##0.00</code> | 51928 | <code>corpus/files/poi/test-data/spreadsheet/54288-ref.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/54288.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/56563a.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/56563b.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/57231_MixedGasReport.xls</code> |
+| <code>_(* #,##0.00_);_(* \(#,##0.00\);_(* "-"??_);_(@_)</code> | 41303 | <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/44636.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/florida_data.ashx.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_15228.xls</code> |
+| <code>_(* #,##0_);_(* \(#,##0\);_(* "-"??_);_(@_)</code> | 23325 | <code>corpus/files/poi/test-data/spreadsheet/14460.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/42464-ExpPtg-bad.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/42464-ExpPtg-ok.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code> |
+| <code>"$"#,##0_);[Red]\("$"#,##0\)</code> | 21781 | <code>corpus/files/poi/test-data/spreadsheet/44958.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/sumifs.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_44958.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_44958.xls.xlsb</code> |
+| <code>_-* #,##0.00" TL"_-;\-* #,##0.00" TL"_-;_-* \-??" TL"_-;_-@_-</code> | 18006 | <code>corpus/files/poi/test-data/spreadsheet/49219.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_49219.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_49219.xls.xlsb</code> |
+| <code>###0.00;-###0.00</code> | 14768 | <code>corpus/files/poi/test-data/spreadsheet/49609.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/50426.xls</code>, <code>corpus/files/sheetjs/test_files/apachepoi_49609.xlsx</code>, <code>corpus/files/sheetjs/test_files/apachepoi_50426.xls</code> |
+| <code>[hh]</code> | 12543 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>[h]</code> | 12520 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>h</code> | 12520 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>hhmm</code> | 12519 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2010.xlsx</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xlsx</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>[ss]</code> | 12517 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>ss</code> | 12517 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>[s]</code> | 12516 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>s</code> | 12516 | <code>corpus/files/sheetjs/test_files/LONumbers-2010.xls</code>, <code>corpus/files/sheetjs/test_files/LONumbers-2011.xls</code>, <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>[mm]</code> | 12499 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>hh</code> | 12499 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>hm</code> | 12499 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |
+| <code>ss.0</code> | 12499 | <code>corpus/files/sheetjs/test_files/time_stress_test_1.xlsb</code> |

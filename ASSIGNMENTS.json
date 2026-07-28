@@ -112,7 +112,7 @@
       "branch": "agent/wax-w2b-formats",
       "worktree": ".worktrees/w2b",
       "bee": "wax-w2b",
-      "state": "working",
+      "state": "retired",
       "owns": [
         "crates/wax-fmt/**",
         "harness/formats/**"
@@ -137,5 +137,5 @@
     }
   ],
   "notes": "First spawn round (2026-07-27) wedged: codex+HSR does not accept a positional prompt at spawn; all five bees booted to nothing and were auto-retired. Respawned bare and briefed via hive send. W2 spawns follow the same rule: spawn BARE, wait idle, brief via hive send, canary one before the rest.",
-  "waveStatus": "W2 live 2026-07-28 (operator go, two amendments: W2B mines corpus formats first + commits test-set; scoreboard delta committed at every shard merge). W1 gate passed; history above. W2 gate: xlsx opens >=90%, cell-value fidelity >=95% on opened files, display coverage climbing with format test-set committed."
+  "waveStatus": "W2 gate PASSED 2026-07-28: xlsx opens 94.20% (>=90%), xlsx cell-value match 99.57% (>=95%), display coverage 0%->99.90% with corpus format test-set committed (487 codes). Display match: xlsx 97.24%; xls/xlsb lag (74%/58%) from missing container fmt codes -> W3 candidate. All three shards merged + retired. W3 NOT started (awaiting operator go)."
 }
