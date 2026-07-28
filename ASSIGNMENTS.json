@@ -20,7 +20,7 @@
       "branch": "agent/wax-w1a-scaffold",
       "worktree": ".worktrees/w1a",
       "bee": "wax-w1a",
-      "state": "working",
+      "state": "merged",
       "owns": [
         "Cargo.toml",
         "Cargo.lock",
