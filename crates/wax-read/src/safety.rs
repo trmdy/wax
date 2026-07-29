@@ -886,7 +886,7 @@ where
                     "XML DOCTYPE and internal DTD subsets are not allowed",
                 ));
             }
-            Event::Start(_) => {
+            Event::Start(ref start) => {
                 depth = depth
                     .checked_add(1)
                     .ok_or_else(|| SafetyError::new(ErrorCode::Bomb, "XML depth overflowed"))?;
@@ -899,13 +899,64 @@ where
                         ),
                     ));
                 }
+                check_cell_reference_attributes(start)?;
             }
+            Event::Empty(ref start) => check_cell_reference_attributes(start)?,
             Event::End(_) => depth = depth.saturating_sub(1),
             Event::Eof => break,
             _ => {}
         }
     }
 
+    Ok(())
+}
+
+/// Rejects A1 references whose column run cannot name a real column.
+///
+/// calamine parses a reference's column with an unguarded
+/// `col = col * 26 + ...` accumulator (`xlsx/mod.rs`
+/// `get_row_and_optional_column`). Seven or more letters overflow `u32`:
+/// that panics under the overflow checks the fuzz targets build with, and
+/// wraps silently in release, yielding a column index unrelated to the
+/// stored reference. Excel's last column is `XFD`, so more than three
+/// letters cannot name one either way — reject the reference instead of
+/// letting a wrapped index reach the reader.
+fn check_cell_reference_attributes(
+    start: &quick_xml::events::BytesStart<'_>,
+) -> Result<(), SafetyError> {
+    const MAX_COLUMN_LETTERS: usize = 3;
+
+    let element = start.name();
+    let element = element.as_ref();
+    for attribute in start.attributes().with_checks(false).flatten() {
+        // The attributes calamine feeds to its reference parser.
+        let is_reference = match attribute.key.as_ref() {
+            b"r" => matches!(element, b"c" | b"row"),
+            b"ref" => matches!(element, b"dimension" | b"mergeCell"),
+            _ => false,
+        };
+        if !is_reference {
+            continue;
+        }
+        let value = attribute.value.as_ref();
+        let mut letters = 0_usize;
+        for byte in value {
+            if byte.is_ascii_alphabetic() {
+                letters += 1;
+                if letters > MAX_COLUMN_LETTERS {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        format!(
+                            "cell reference {} has more than {MAX_COLUMN_LETTERS} column letters",
+                            String::from_utf8_lossy(value)
+                        ),
+                    ));
+                }
+            } else {
+                letters = 0;
+            }
+        }
+    }
     Ok(())
 }
 
