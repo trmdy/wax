@@ -6,7 +6,54 @@ that `scripts/check.sh`'s deterministic replay stays a regression gate for
 *fixed* findings. Every entry must name the defect, the current behavior,
 and the intended fix.
 
-**Status: empty — no open findings (W5, 2026-07-29).**
+**Status (W5, 2026-07-29): one open finding, below.** It is an upstream
+defect with **no reachable effect in the shipped release binary** — see the
+measured evidence — and it is declared in the W5 seal rather than counted
+as a clean burn.
+
+## xlsx_reader / calamine column-accumulator overflow
+
+- **Input:** `xlsx_reader/calamine-column-accumulator-overflow.xlsx`
+  (recovered from a 1800 s burn, 2026-07-29; libFuzzer
+  `crash-f8682aa9e142ffee57dc4ad26ebc1506700717a8`).
+- **Defect:** `calamine 0.36.1`'s `get_row_and_optional_column`
+  (`src/xlsx/mod.rs:2838`) accumulates a reference's column with an
+  unguarded `col = col * 26 + …`. Seven or more letters overflow `u32`:
+  a panic under the overflow checks the fuzz targets build with, and a
+  **silent wrap** in release, producing a column index unrelated to the
+  stored reference.
+- **Current wax behavior — release (what ships) is unaffected.** Measured
+  on this artifact and on a purpose-built overflowing workbook:
+  the artifact returns a structured `bad_zip` in ~2 ms at ~3 MB peak RSS;
+  a crafted `<dimension ref="A1:AAAAAAA1048576">` is rejected by the rail
+  below; and when a wrapped index does reach the reader it is inert,
+  because calamine reads xlsx cells rather than trusting the dimension
+  (verified: opens at 1.8 MB, no allocation growth). There is no
+  memory-safety or resource hazard in the shipped binary — this is a
+  debug/ASAN-build panic.
+- **Partial containment already in place:** `check_cell_reference_attributes`
+  (`crates/wax-read/src/safety.rs`) rejects references with more than
+  three column letters (Excel's last column is `XFD`) on the attributes
+  calamine feeds that parser — `@r` on `<c>`/`<row>`, `@ref` on
+  `<dimension>`/`<mergeCell>`/`<autoFilter>`/`<hyperlink>` — matched by
+  *local* name so a namespace prefix cannot bypass it.
+- **Why the rail does not close it — the structural finding.** This
+  artifact's sheet part is **invisible to preflight**: the `zip` crate
+  cannot enumerate that member (Python's `zipfile` also refuses it:
+  `Bad magic number for file header`) while calamine's own zip reader
+  parses it happily. So preflight validated a different set of parts than
+  the reader consumed. No XML-layer rail can fix that; the two zip
+  parsers disagree about what the container holds.
+  *This applies to every XML rail wax has, not just this one — it is the
+  most useful thing this finding taught us.*
+- **Intended fix (post-v0.1.0), in preference order:** (a) upstream a
+  `checked_mul`/letter-count guard to calamine — smallest, fixes it for
+  everyone; (b) reject packages whose entry set differs between the `zip`
+  crate and a second minimal reader, closing the whole
+  preflight-blindness class rather than this one symptom; (c) vendor a
+  patched calamine. A broader "any `ref` attribute" rail was tried and
+  rejected: it also matches XSD `<xs:element ref="…">` in the custom-XML
+  parts real workbooks carry and cost **14 corpus opens**.
 
 Keep this file as the ledger format for anything future burns turn up.
 

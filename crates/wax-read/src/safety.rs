@@ -926,13 +926,26 @@ fn check_cell_reference_attributes(
 ) -> Result<(), SafetyError> {
     const MAX_COLUMN_LETTERS: usize = 3;
 
+    // Match *local* names, as calamine does: a namespace prefix such as
+    // `<x:dimension>` would otherwise walk straight past this rail. The
+    // element set is deliberately closed — a bare "any `ref` attribute"
+    // rule also matches XSD `<xs:element ref="EG_ExtensionList">` in the
+    // custom-XML parts real workbooks carry, which cost 14 corpus opens
+    // when tried.
     let element = start.name();
-    let element = element.as_ref();
+    let element = element.local_name();
     for attribute in start.attributes().with_checks(false).flatten() {
-        // The attributes calamine feeds to its reference parser.
-        let is_reference = match attribute.key.as_ref() {
-            b"r" => matches!(element, b"c" | b"row"),
-            b"ref" => matches!(element, b"dimension" | b"mergeCell"),
+        let key = attribute.key;
+        // `xmlns:r="…"` has the local name `r` but binds a namespace URI.
+        if key.as_ref().starts_with(b"xmlns") {
+            continue;
+        }
+        let is_reference = match key.local_name().as_ref() {
+            b"r" => matches!(element.as_ref(), b"c" | b"row"),
+            b"ref" => matches!(
+                element.as_ref(),
+                b"dimension" | b"mergeCell" | b"autoFilter" | b"hyperlink"
+            ),
             _ => false,
         };
         if !is_reference {
