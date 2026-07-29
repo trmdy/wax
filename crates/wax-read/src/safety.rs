@@ -256,7 +256,142 @@ fn preflight_legacy_cfb(
         sector_id = u32::from_le_bytes(next);
     }
 
+    preflight_cfb_chains(
+        &mut input,
+        &header,
+        sector_bytes,
+        total_sectors,
+        input_bytes,
+    )?;
+
     preflight_biff_records(path, input_bytes, options)
+}
+
+/// Rejects cyclic or over-long CFB sector chains before calamine follows them.
+///
+/// calamine reads the directory chain with `usize::MAX` as its length bound
+/// (`Sectors::get_chain`), so a FAT cycle appends one sector per hop forever:
+/// the quarantined 5,640-byte artifact reached 24 GiB RSS in 30 s that way.
+/// Every real chain is at most as long as the number of sectors that
+/// physically fit in the container, so walking each chain here with that bound
+/// contains the whole class — including the mini-FAT and ministream chains
+/// calamine reads with concrete lengths but the same cyclic-FAT exposure.
+fn preflight_cfb_chains(
+    input: &mut File,
+    header: &[u8; 512],
+    sector_bytes: u64,
+    total_sectors: u64,
+    input_bytes: u64,
+) -> Result<(), SafetyError> {
+    const FREE_SECTOR: u32 = 0xFFFF_FFFF;
+    const END_OF_CHAIN: u32 = 0xFFFF_FFFE;
+    // Sector ids at or above this are reserved markers, never real sectors.
+    const RESERVED_SECTORS: u32 = 0xFFFF_FFFA;
+
+    let read_sector = |input: &mut File, id: u32| -> Result<Vec<u8>, SafetyError> {
+        let start = (u64::from(id) + 1)
+            .checked_mul(sector_bytes)
+            .filter(|start| start.saturating_add(sector_bytes) <= input_bytes)
+            .ok_or_else(|| {
+                SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("XLS compound-document sector {id} lies outside the container"),
+                )
+            })?;
+        input
+            .seek(std::io::SeekFrom::Start(start))
+            .map_err(|error| {
+                SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("could not seek XLS sector {id}: {error}"),
+                )
+            })?;
+        let mut buffer = vec![0_u8; sector_bytes as usize];
+        input.read_exact(&mut buffer).map_err(|error| {
+            SafetyError::new(
+                ErrorCode::BadZip,
+                format!("could not read XLS sector {id}: {error}"),
+            )
+        })?;
+        Ok(buffer)
+    };
+
+    // Collect the DIFAT: the 109 header entries plus every DIFAT sector. The
+    // chain walk above already proved this terminates within `total_sectors`.
+    let mut difat = Vec::new();
+    let push_entries = |bytes: &[u8], difat: &mut Vec<u32>| {
+        for entry in bytes.chunks_exact(4) {
+            let id = u32::from_le_bytes(entry.try_into().expect("chunks_exact(4)"));
+            if id < RESERVED_SECTORS {
+                difat.push(id);
+            }
+        }
+    };
+    push_entries(&header[76..512], &mut difat);
+    let mut sector_id = u32::from_le_bytes(header[68..72].try_into().expect("header is 512 bytes"));
+    while sector_id < RESERVED_SECTORS {
+        let sector = read_sector(input, sector_id)?;
+        let split = sector.len() - 4;
+        push_entries(&sector[..split], &mut difat);
+        sector_id = u32::from_le_bytes(sector[split..].try_into().expect("4 trailing bytes"));
+    }
+
+    // Materialize the FAT. Every entry a chain can reach lives here, and the
+    // header's FAT-sector count was already bounded by `total_sectors`.
+    let entries_per_sector = (sector_bytes / 4) as usize;
+    let mut fat = Vec::with_capacity(difat.len().saturating_mul(entries_per_sector));
+    for id in difat {
+        let sector = read_sector(input, id)?;
+        for entry in sector.chunks_exact(4) {
+            fat.push(u32::from_le_bytes(
+                entry.try_into().expect("chunks_exact(4)"),
+            ));
+        }
+    }
+
+    let walk = |start: u32, name: &str| -> Result<(), SafetyError> {
+        let mut sector_id = start;
+        let mut hops = 0_u64;
+        while sector_id != END_OF_CHAIN && sector_id != FREE_SECTOR {
+            if sector_id >= RESERVED_SECTORS {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("XLS {name} chain reaches reserved sector id {sector_id}"),
+                ));
+            }
+            hops += 1;
+            if hops > total_sectors {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("XLS {name} chain exceeds {total_sectors} sectors (cyclic or corrupt)"),
+                ));
+            }
+            if u64::from(sector_id) >= total_sectors {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!(
+                        "XLS {name} chain enters sector {sector_id} beyond the {total_sectors} sectors in the container"
+                    ),
+                ));
+            }
+            let Some(&next) = fat.get(sector_id as usize) else {
+                return Err(SafetyError::new(
+                    ErrorCode::BadZip,
+                    format!("XLS {name} chain leaves the allocation table at sector {sector_id}"),
+                ));
+            };
+            sector_id = next;
+        }
+        Ok(())
+    };
+
+    let directory_start =
+        u32::from_le_bytes(header[48..52].try_into().expect("header is 512 bytes"));
+    walk(directory_start, "directory")?;
+    let mini_fat_start =
+        u32::from_le_bytes(header[60..64].try_into().expect("header is 512 bytes"));
+    walk(mini_fat_start, "mini-FAT")?;
+    Ok(())
 }
 
 fn preflight_biff_records(
@@ -347,6 +482,7 @@ fn walk_biff_substream(
 ) -> Result<Vec<usize>, SafetyError> {
     let mut offset = start;
     let mut sheet_offsets = Vec::new();
+    let mut extent = ObservedExtent::default();
 
     loop {
         // Trailing padding that is not a whole record is tolerated by Excel
@@ -395,7 +531,13 @@ fn walk_biff_substream(
             0x0207 => 2,          // String (formula result): cch (BIFF5 has no grbit)
             0x0200 => 10,         // Dimensions (also structurally checked)
             0x0017 => 2,          // ExternSheet: cxti (XTI array may be continued)
-            0x00E5 => 2,          // MergeCells: cmcs
+            // Lbl (DEFINEDNAME): calamine's parse_lbl reads data[3],
+            // read_u16(&data[4..]), and slices data[14..] with no length
+            // check, then indexes data[data.len() - cce]. Structurally
+            // checked below as well. This class panics in release too,
+            // unlike the arithmetic-overflow family.
+            0x0018 => 14,
+            0x00E5 => 2, // MergeCells: cmcs
             // Records whose calamine *match guards* read a u16 before the
             // arm body runs, so a short payload panics before any check.
             0x002F | 0x0042 | 0x0022 => 2, // FilePass, CodePage, DateMode
@@ -423,6 +565,45 @@ fn walk_biff_substream(
                 }
             }
             0x0200 => check_declared_extent(data, options.max_declared_cells)?,
+            // Lbl: calamine takes the formula tail as `data[data.len() - cce..]`,
+            // so a declared `cce` larger than the record underflows the
+            // subtraction before the slice is even built.
+            0x0018 => {
+                let cce = usize::from(u16::from_le_bytes([data[4], data[5]]));
+                if cce > data.len() {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        format!(
+                            "BIFF Lbl record declares a {cce} byte formula inside a {} byte record",
+                            data.len()
+                        ),
+                    ));
+                }
+            }
+            // Cell-bearing records. calamine collects these into a Vec and
+            // hands it to `Range::from_sparse`, which densifies the *observed*
+            // span — no DIMENSIONS record required. A file holding two cells
+            // at opposite corners of the BIFF grid therefore reserves
+            // 65,536 x 65,536 cells (the 137 GB allocation behind the
+            // quarantined calamine-unbounded-fat-growth.xls artifact).
+            0x0201 | 0x0203 | 0x0204 | 0x0205 | 0x00D6 | 0x027E | 0x00FD | 0x0006
+                if data.len() >= 4 =>
+            {
+                let row = u32::from(u16::from_le_bytes([data[0], data[1]]));
+                let column = u32::from(u16::from_le_bytes([data[2], data[3]]));
+                extent.observe(row, column);
+            }
+            // MulBlank carries one row and a first..last column span.
+            0x00BE if data.len() >= 6 => {
+                let row = u32::from(u16::from_le_bytes([data[0], data[1]]));
+                let first = u32::from(u16::from_le_bytes([data[2], data[3]]));
+                let last = u32::from(u16::from_le_bytes([
+                    data[data.len() - 2],
+                    data[data.len() - 1],
+                ]));
+                extent.observe(row, first);
+                extent.observe(row, last.max(first));
+            }
             0x00BD => {
                 let malformed = data.len() < 6 || {
                     let first_col = u16::from_le_bytes([data[2], data[3]]);
@@ -436,6 +617,14 @@ fn walk_biff_substream(
                         "malformed BIFF MulRk record",
                     ));
                 }
+                let row = u32::from(u16::from_le_bytes([data[0], data[1]]));
+                let first = u32::from(u16::from_le_bytes([data[2], data[3]]));
+                let last = u32::from(u16::from_le_bytes([
+                    data[data.len() - 2],
+                    data[data.len() - 1],
+                ]));
+                extent.observe(row, first);
+                extent.observe(row, last);
             }
             0x0085 => {
                 let declared =
@@ -456,7 +645,61 @@ fn walk_biff_substream(
         }
     }
 
+    extent.check(options.max_declared_cells)?;
     Ok(sheet_offsets)
+}
+
+/// The row/column span actually occupied by a substream's cell records.
+///
+/// calamine densifies this span in `Range::from_sparse` regardless of what
+/// (or whether) a DIMENSIONS record declares, so it needs the same cap.
+#[derive(Debug)]
+struct ObservedExtent {
+    first_row: u32,
+    last_row: u32,
+    first_col: u32,
+    last_col: u32,
+    seen: bool,
+}
+
+impl Default for ObservedExtent {
+    fn default() -> Self {
+        Self {
+            first_row: u32::MAX,
+            last_row: 0,
+            first_col: u32::MAX,
+            last_col: 0,
+            seen: false,
+        }
+    }
+}
+
+impl ObservedExtent {
+    fn observe(&mut self, row: u32, column: u32) {
+        self.seen = true;
+        self.first_row = self.first_row.min(row);
+        self.last_row = self.last_row.max(row);
+        self.first_col = self.first_col.min(column);
+        self.last_col = self.last_col.max(column);
+    }
+
+    fn check(&self, max_cells: u64) -> Result<(), SafetyError> {
+        if !self.seen {
+            return Ok(());
+        }
+        let rows = u64::from(self.last_row - self.first_row) + 1;
+        let cols = u64::from(self.last_col - self.first_col) + 1;
+        let cells = rows.saturating_mul(cols);
+        if cells > max_cells {
+            return Err(SafetyError::new(
+                ErrorCode::Bomb,
+                format!(
+                    "XLS cell records span {rows}x{cols} ({cells} cells), exceeding the {max_cells} cell limit"
+                ),
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn check_declared_extent(data: &[u8], max_cells: u64) -> Result<(), SafetyError> {
@@ -664,7 +907,7 @@ where
                     "XML DOCTYPE and internal DTD subsets are not allowed",
                 ));
             }
-            Event::Start(_) => {
+            Event::Start(ref start) => {
                 depth = depth
                     .checked_add(1)
                     .ok_or_else(|| SafetyError::new(ErrorCode::Bomb, "XML depth overflowed"))?;
@@ -677,13 +920,77 @@ where
                         ),
                     ));
                 }
+                check_cell_reference_attributes(start)?;
             }
+            Event::Empty(ref start) => check_cell_reference_attributes(start)?,
             Event::End(_) => depth = depth.saturating_sub(1),
             Event::Eof => break,
             _ => {}
         }
     }
 
+    Ok(())
+}
+
+/// Rejects A1 references whose column run cannot name a real column.
+///
+/// calamine parses a reference's column with an unguarded
+/// `col = col * 26 + ...` accumulator (`xlsx/mod.rs`
+/// `get_row_and_optional_column`). Seven or more letters overflow `u32`:
+/// that panics under the overflow checks the fuzz targets build with, and
+/// wraps silently in release, yielding a column index unrelated to the
+/// stored reference. Excel's last column is `XFD`, so more than three
+/// letters cannot name one either way — reject the reference instead of
+/// letting a wrapped index reach the reader.
+fn check_cell_reference_attributes(
+    start: &quick_xml::events::BytesStart<'_>,
+) -> Result<(), SafetyError> {
+    const MAX_COLUMN_LETTERS: usize = 3;
+
+    // Match *local* names, as calamine does: a namespace prefix such as
+    // `<x:dimension>` would otherwise walk straight past this rail. The
+    // element set is deliberately closed — a bare "any `ref` attribute"
+    // rule also matches XSD `<xs:element ref="EG_ExtensionList">` in the
+    // custom-XML parts real workbooks carry, which cost 14 corpus opens
+    // when tried.
+    let element = start.name();
+    let element = element.local_name();
+    for attribute in start.attributes().with_checks(false).flatten() {
+        let key = attribute.key;
+        // `xmlns:r="…"` has the local name `r` but binds a namespace URI.
+        if key.as_ref().starts_with(b"xmlns") {
+            continue;
+        }
+        let is_reference = match key.local_name().as_ref() {
+            b"r" => matches!(element.as_ref(), b"c" | b"row"),
+            b"ref" => matches!(
+                element.as_ref(),
+                b"dimension" | b"mergeCell" | b"autoFilter" | b"hyperlink"
+            ),
+            _ => false,
+        };
+        if !is_reference {
+            continue;
+        }
+        let value = attribute.value.as_ref();
+        let mut letters = 0_usize;
+        for byte in value {
+            if byte.is_ascii_alphabetic() {
+                letters += 1;
+                if letters > MAX_COLUMN_LETTERS {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        format!(
+                            "cell reference {} has more than {MAX_COLUMN_LETTERS} column letters",
+                            String::from_utf8_lossy(value)
+                        ),
+                    ));
+                }
+            } else {
+                letters = 0;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1090,6 +1397,26 @@ mod tests {
         // fresh clone (no dir) and a fuzz-run-but-clean tree (empty dir)
         // simply mean there is nothing to replay here.
         let _ = checked;
+    }
+
+    #[test]
+    fn legacy_biff_rejects_observed_extent_bomb_without_a_dimensions_record() {
+        // The former quarantined finding: no DIMENSIONS record declares a
+        // hostile extent, but two cell records sit at opposite corners of the
+        // BIFF grid, so calamine's `Range::from_sparse` densified 65,536 x
+        // 65,536 cells (137 GB reserve, 24 GiB RSS before the wall clock).
+        let document = read_with_deadline(
+            crate::CalamineReader,
+            &legacy_seed("calamine-observed-extent-bomb.xls"),
+            ReaderOptions::default(),
+        );
+
+        assert!(!document.ok);
+        let error = document.error.expect("extent bomb should carry an error");
+        assert_eq!(error.code, ErrorCode::Bomb.as_str());
+        assert!(error.msg.contains("65536x65536"));
+        assert!(error.msg.contains("4294967296 cells"));
+        assert!(error.msg.contains("8000000 cell limit"));
     }
 
     #[test]

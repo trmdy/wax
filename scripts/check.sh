@@ -116,8 +116,18 @@ burn_fuzz_target() {
 
   corpus_dir="$(mktemp -d "${TMPDIR:-/tmp}/wax-fuzz-${target}.XXXXXX")"
   cp -R "fuzz/corpus/${target}/." "$corpus_dir/"
+  # `-rss_limit_mb` caps *total process* RSS, which in a long burn includes
+  # libFuzzer's own in-memory corpus: a 30-minute run that discovers ~10k
+  # new units trips the 2048 MB default and reports an OOM whose artifact
+  # is the empty file, with no wax frames on the stack. Raise it, and set
+  # `-malloc_limit_mb` explicitly so single hostile allocations — the class
+  # that actually matters, and how the 137 GB extent bomb was caught — are
+  # still reported as findings.
   rustup run "$nightly_toolchain" cargo fuzz run "$target" "$corpus_dir" -- \
-    -max_total_time="${WAX_FUZZ_BURN_SECONDS:-300}" -print_final_stats=1 -verbosity=0 || status=$?
+    -max_total_time="${WAX_FUZZ_BURN_SECONDS:-300}" \
+    -rss_limit_mb="${WAX_FUZZ_RSS_LIMIT_MB:-8192}" \
+    -malloc_limit_mb="${WAX_FUZZ_MALLOC_LIMIT_MB:-2048}" \
+    -print_final_stats=1 -verbosity=0 || status=$?
   rm -rf -- "$corpus_dir"
   return "$status"
 }
