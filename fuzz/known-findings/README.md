@@ -6,10 +6,12 @@ that `scripts/check.sh`'s deterministic replay stays a regression gate for
 *fixed* findings. Every entry must name the defect, the current behavior,
 and the intended fix.
 
-**Status (W5, 2026-07-29): one open finding, below.** It is an upstream
-defect with **no reachable effect in the shipped release binary** — see the
-measured evidence — and it is declared in the W5 seal rather than counted
-as a clean burn.
+**Status (W5, 2026-07-30): two open findings, both upstream in
+`calamine 0.36.1`, both contained by wax.** Neither can crash the shipped
+binary: the xlsx family is inert in release (measured), and the legacy
+family is caught by the reader's panic boundary and returned as a
+structured error. Extended burns closed four other findings outright.
+Both are declared in the W5 seal rather than counted as clean burns.
 
 ## xlsx_reader / unguarded arithmetic in calamine's `get_dimension`
 
@@ -61,6 +63,45 @@ as a clean burn.
   patched calamine. A broader "any `ref` attribute" rail was tried and
   rejected: it also matches XSD `<xs:element ref="…">` in the custom-XML
   parts real workbooks carry and cost **14 corpus opens**.
+
+## legacy_xls_reader / unchecked record and chain parsing in calamine
+
+- **Input:** `legacy_xls_reader/calamine-cfb-empty-fat-index.xls`.
+- **Defect:** calamine's legacy path indexes attacker-controlled
+  structures without bounds checks. Four instances surfaced in W5 burns;
+  **three were fixed in wax's preflight** and are now committed regression
+  seeds:
+  - *fixed* — `parse_lbl` reads `data[3]` / `data[4..]` on a short record
+    (`xls.rs:791`, index-out-of-bounds). Rail: `Lbl` (0x0018) requires its
+    14-byte fixed header.
+  - *fixed* — `parse_lbl` takes `data[data.len() - cce..]` with `cce` read
+    from the record (`xls.rs:801`, subtract underflow). Rail: structural
+    check that the declared formula length fits the record.
+  - *fixed (earlier)* — `Range::from_sparse` densifying an observed
+    65,536 × 65,536 span. Rail: `ObservedExtent`. See Closed, below.
+  - **open** — `get_chain` evaluates `fats[sector_id as usize]` on an
+    empty FAT (`cfb.rs:330`). The chain being walked is the ministream,
+    whose start comes from a parsed directory entry; wax's
+    `preflight_cfb_chains` validates the directory and mini-FAT chains but
+    cannot reach that one without reimplementing directory parsing.
+- **Current wax behavior:** contained. `wax dump` returns a structured
+  `{"ok":false,"code":"internal","msg":"calamine panicked while reading
+  the workbook"}` in **~0 ms at 1.3 MB** — the reader runs on an owned
+  worker thread whose panic is caught and converted, so no crash reaches a
+  caller. It is `internal` rather than `bad_zip`, which by wax's own
+  contract reads as "wax bug"; that is the honest cost of not having a
+  rail for it.
+- **Why this is declared rather than chased:** each burn round surfaced
+  the next unchecked access in the same dependency. Three were worth
+  closing because each had a precise, corpus-safe rail in a mechanism that
+  already existed. This one would require wax to reimplement CFB
+  directory parsing to reach the ministream chain — a large new attack
+  surface of our own to guard against a dependency's missing bounds check.
+- **Intended fix (post-v0.1.0), in preference order:** (a) upstream
+  bounds checks to calamine's `cfb.rs` chain walk — one `get()` instead of
+  an index; (b) map caught reader panics to `bad_zip` rather than
+  `internal` so hostile input is not reported as a wax defect; (c) mirror
+  directory parsing in preflight (last resort).
 
 Keep this file as the ledger format for anything future burns turn up.
 
