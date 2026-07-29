@@ -531,6 +531,11 @@ fn walk_biff_substream(
             0x0207 => 2,          // String (formula result): cch (BIFF5 has no grbit)
             0x0200 => 10,         // Dimensions (also structurally checked)
             0x0017 => 2,          // ExternSheet: cxti (XTI array may be continued)
+            // Lbl (DEFINEDNAME): calamine's parse_lbl reads data[3] then
+            // read_u16(&data[4..]) with no length check, so a short record
+            // is an index-out-of-bounds panic — one that fires in release
+            // too, unlike the arithmetic-overflow family.
+            0x0018 => 6,
             0x00E5 => 2,          // MergeCells: cmcs
             // Records whose calamine *match guards* read a u16 before the
             // arm body runs, so a short payload panics before any check.
