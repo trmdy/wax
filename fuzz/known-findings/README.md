@@ -11,19 +11,26 @@ defect with **no reachable effect in the shipped release binary** — see the
 measured evidence — and it is declared in the W5 seal rather than counted
 as a clean burn.
 
-## xlsx_reader / calamine column-accumulator overflow
+## xlsx_reader / unguarded arithmetic in calamine's `get_dimension`
 
-- **Input:** `xlsx_reader/calamine-column-accumulator-overflow.xlsx`
-  (recovered from a 1800 s burn, 2026-07-29; libFuzzer
-  `crash-f8682aa9e142ffee57dc4ad26ebc1506700717a8`).
-- **Defect:** `calamine 0.36.1`'s `get_row_and_optional_column`
-  (`src/xlsx/mod.rs:2838`) accumulates a reference's column with an
-  unguarded `col = col * 26 + …`. Seven or more letters overflow `u32`:
-  a panic under the overflow checks the fuzz targets build with, and a
-  **silent wrap** in release, producing a column index unrelated to the
-  stored reference.
+- **Inputs:** two artifacts, both from 1800 s burns (2026-07-29/30):
+  `xlsx_reader/calamine-column-accumulator-overflow.xlsx` and
+  `xlsx_reader/calamine-dimension-subtract-underflow.xlsx`.
+- **Defect:** `calamine 0.36.1`'s reference parsing does unguarded
+  integer arithmetic on attacker-controlled A1 refs. Two sites found so
+  far, and the family is what matters rather than either instance:
+  - `get_row_and_optional_column` (`src/xlsx/mod.rs:2838`) accumulates a
+    column with `col = col * 26 + …`; seven or more letters overflow
+    `u32`.
+  - `get_dimension` (`src/xlsx/mod.rs:2793`) computes
+    `parts[1].0 - parts[0].0` without ordering the pair, so a reversed
+    range (`B9:A1`) underflows.
+  Both panic under the overflow checks the fuzz targets build with, and
+  **wrap silently** in release.
 - **Current wax behavior — release (what ships) is unaffected.** Measured
-  on this artifact and on a purpose-built overflowing workbook:
+  on both artifacts and on three purpose-built hostile workbooks
+  (overflowing column run, reversed rows `B9:A1`, reversed columns
+  `Z1:A1` — the last two open inertly at 1.4-3.3 MB):
   the artifact returns a structured `bad_zip` in ~2 ms at ~3 MB peak RSS;
   a crafted `<dimension ref="A1:AAAAAAA1048576">` is rejected by the rail
   below; and when a wrapped index does reach the reader it is inert,
@@ -46,9 +53,9 @@ as a clean burn.
   parsers disagree about what the container holds.
   *This applies to every XML rail wax has, not just this one — it is the
   most useful thing this finding taught us.*
-- **Intended fix (post-v0.1.0), in preference order:** (a) upstream a
-  `checked_mul`/letter-count guard to calamine — smallest, fixes it for
-  everyone; (b) reject packages whose entry set differs between the `zip`
+- **Intended fix (post-v0.1.0), in preference order:** (a) upstream
+  `checked_mul` / `checked_sub` (or an ordered pair) guards to calamine's
+  reference parsing — smallest, fixes the whole family for everyone; (b) reject packages whose entry set differs between the `zip`
   crate and a second minimal reader, closing the whole
   preflight-blindness class rather than this one symptom; (c) vendor a
   patched calamine. A broader "any `ref` attribute" rail was tried and
