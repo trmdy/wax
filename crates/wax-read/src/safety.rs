@@ -319,7 +319,7 @@ fn preflight_cfb_chains(
     // Collect the DIFAT: the 109 header entries plus every DIFAT sector. The
     // chain walk above already proved this terminates within `total_sectors`.
     let mut difat = Vec::new();
-    let mut push_entries = |bytes: &[u8], difat: &mut Vec<u32>| {
+    let push_entries = |bytes: &[u8], difat: &mut Vec<u32>| {
         for entry in bytes.chunks_exact(4) {
             let id = u32::from_le_bytes(entry.try_into().expect("chunks_exact(4)"));
             if id < RESERVED_SECTORS {
@@ -537,7 +537,7 @@ fn walk_biff_substream(
             // checked below as well. This class panics in release too,
             // unlike the arithmetic-overflow family.
             0x0018 => 14,
-            0x00E5 => 2,          // MergeCells: cmcs
+            0x00E5 => 2, // MergeCells: cmcs
             // Records whose calamine *match guards* read a u16 before the
             // arm body runs, so a short payload panics before any check.
             0x002F | 0x0042 | 0x0022 => 2, // FilePass, CodePage, DateMode
