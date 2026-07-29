@@ -731,6 +731,19 @@ fn write_xlsx_value(
         (CellType::N, Some(CellValue::Number(value)), None) if value.is_finite() => {
             worksheet.write_number(row, column, *value)
         }
+        // rust_xlsxwriter emits nothing for an empty string, so the cell
+        // disappears from the exported sheet and cannot round-trip. The
+        // readers do treat a stored empty string as a value (W5B restores
+        // exactly these cells on the BIFF/XLSB paths), so this is a real
+        // loss and the contract requires it to be loud rather than silent.
+        // A formatted cell is still written blank so its styling survives.
+        (CellType::S, Some(CellValue::Text(value)), format) if value.is_empty() => {
+            dropped.add("empty strings are not representable in xlsx");
+            match format {
+                Some(format) => worksheet.write_blank(row, column, format),
+                None => Ok(worksheet),
+            }
+        }
         (CellType::S, Some(CellValue::Text(value)), Some(format)) => {
             let value = truncate_xlsx_string(value, sheet_name, row, column, "string", dropped);
             worksheet.write_string_with_format(row, column, value, format)

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-29T23:08:52Z",
+  "generatedAt": "2026-07-29T23:21:39Z",
   "filesAttempted": 2044,
   "filesSkipped": 0,
   "metrics": {
@@ -50,8 +50,8 @@
     },
     "parseTimeMs": {
       "wax": {
-        "p50": 0,
-        "p95": 8
+        "p50": 1,
+        "p95": 7
       },
       "sheetjs": {
         "p50": 7,
@@ -60,12 +60,12 @@
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 3457024,
-        "max": 732168192
+        "p50": 3489792,
+        "max": 707756032
       },
       "sheetjs": {
-        "p50": 100958208,
-        "max": 1253490688
+        "p50": 100466688,
+        "max": 1246478336
       }
     },
     "windowLatencyMs": {
@@ -78,12 +78,12 @@
       "percent": 96.0371819960861
     },
     "windowLatencyPercentilesMs": {
-      "p50": 7.569667000000001,
-      "p95": 8.497542000000001
+      "p50": 6.956708,
+      "p95": 8.321833000000002
     },
     "servePeakRssBytes": {
-      "p50": 3653632,
-      "max": 814710784
+      "p50": 3670016,
+      "max": 813367296
     },
     "serveStatus": {
       "status": "available",
@@ -263,16 +263,16 @@
         "percent": 100.0
       },
       "sofficeOpenRate": {
-        "matched": 0,
-        "total": 0,
-        "percent": null
+        "matched": 187,
+        "total": 187,
+        "percent": 100.0
       },
       "skippedTruncated": 4,
       "status": {
         "status": "available",
         "reason": null,
-        "sofficeStatus": "disabled",
-        "sofficeReason": "soffice disabled"
+        "sofficeStatus": "available",
+        "sofficeReason": null
       }
     }
   }
