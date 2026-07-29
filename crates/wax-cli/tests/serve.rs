@@ -117,7 +117,13 @@ fn version_handshake_and_eof_exit_zero() {
     let response = server.receive();
     assert_eq!(
         response,
-        json!({"id":1,"ok":true,"proto":0,"version":"0.1.0"})
+        json!({
+            "id": 1,
+            "ok": true,
+            "proto": 0,
+            "version": env!("CARGO_PKG_VERSION"),
+            "caps": ["exportOverrides"],
+        })
     );
     assert!(server.eof().success());
 }
@@ -127,6 +133,7 @@ fn open_meta_window_close_happy_path() {
     let mut server = Server::start(&[]);
     let opened = open(&mut server, 10);
     assert_eq!(opened["proto"], 0);
+    assert_eq!(opened["caps"], json!(["exportOverrides"]));
     assert_eq!(opened["handle"], "h1");
     assert_eq!(opened["truncated"], false);
     assert_eq!(
@@ -269,6 +276,68 @@ fn csv_export_is_rfc_4180_and_xlsx_succeeds() {
     assert!(xlsx["bytes"].as_u64().expect("bytes") > 0);
     assert!(xlsx["dropped"].is_array());
     assert!(copy.exists());
+    assert!(server.eof().success());
+}
+
+#[test]
+fn export_applies_overrides_and_reports_the_post_collapse_count() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let out = temp.path().join("edited.csv");
+    let mut server = Server::start(&[]);
+    open(&mut server, 40);
+
+    // Duplicate overrides collapse last-wins; a clear empties a cell; the
+    // response carries the post-collapse applied count.
+    server.send(json!({
+        "id": 41, "op": "export", "handle": "h1", "format": "csv", "out": out,
+        "overrides": [
+            {"sheet": 0, "r": 0, "c": 0, "v": "stale"},
+            {"sheet": 0, "r": 0, "c": 0, "v": "edited"},
+            {"sheet": 0, "r": 0, "c": 1, "v": null},
+        ]
+    }));
+    let response = server.receive();
+    assert_eq!(response["ok"], true, "{response}");
+    assert_eq!(response["applied"], 2, "{response}");
+    let csv = std::fs::read_to_string(&out).expect("CSV should exist");
+    let first_line = csv.lines().next().expect("csv should have a first line");
+    assert!(
+        first_line.starts_with("edited,,"),
+        "override + clear must land in the first row: {first_line}"
+    );
+
+    // The same edit set through xlsx: applied covers the whole workbook.
+    let copy = temp.path().join("edited.xlsx");
+    server.send(json!({
+        "id": 42, "op": "export", "handle": "h1", "format": "xlsx", "out": copy,
+        "overrides": [{"sheet": 0, "r": 0, "c": 0, "v": 42.5}]
+    }));
+    let response = server.receive();
+    assert_eq!(response["ok"], true, "{response}");
+    assert_eq!(response["applied"], 1, "{response}");
+    assert!(copy.exists());
+
+    // A5: unknown sheet index is bad_request, never a silent skip; the
+    // malformed-entry taxonomy also comes back bad_request naming the field.
+    let refused = temp.path().join("refused.csv");
+    server.send(json!({
+        "id": 43, "op": "export", "handle": "h1", "format": "csv", "out": refused,
+        "overrides": [{"sheet": 9, "r": 0, "c": 0, "v": 1}]
+    }));
+    let response = server.receive();
+    assert_eq!(response["code"], "bad_request", "{response}");
+    assert!(!refused.exists());
+    server.send(json!({
+        "id": 44, "op": "export", "handle": "h1", "format": "csv", "out": refused,
+        "overrides": [{"sheet": 0, "r": 0, "c": 0}]
+    }));
+    let response = server.receive();
+    assert_eq!(response["code"], "bad_request", "{response}");
+    assert!(response["msg"]
+        .as_str()
+        .expect("message")
+        .contains("overrides[0].v"));
+    assert!(!refused.exists());
     assert!(server.eof().success());
 }
 

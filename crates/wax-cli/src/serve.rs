@@ -13,10 +13,11 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use wax_core::CellOverride;
 use wax_proto::{
-    parse_request, CancelResponse, CloseResponse, ErrorCode, ErrorResponse, ExportResponse,
-    MetaResponse, OpenResponse, Request, Response, SheetSummary, StatsResponse, VersionResponse,
-    WindowResponse, WireCell, PROTO_VERSION,
+    parse_request, server_caps, CancelResponse, CloseResponse, ErrorCode, ErrorResponse,
+    ExportResponse, MetaResponse, OpenResponse, Request, Response, SheetSummary, StatsResponse,
+    VersionResponse, WindowResponse, WireCell, PROTO_VERSION,
 };
 use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
 use wax_store::{Window, WindowCell, WorkbookStore};
@@ -233,6 +234,7 @@ impl State {
                     id: result.id,
                     ok: true,
                     proto: PROTO_VERSION,
+                    caps: server_caps(),
                     handle,
                     truncated: opened.truncated,
                     sheets,
@@ -244,6 +246,7 @@ impl State {
                 id: result.id,
                 ok: true,
                 bytes: outcome.bytes,
+                applied: outcome.applied,
                 dropped: outcome.dropped,
             }),
         })
@@ -369,6 +372,7 @@ fn dispatch(
             ok: true,
             proto: PROTO_VERSION,
             version: env!("CARGO_PKG_VERSION").to_owned(),
+            caps: server_caps(),
         })),
         Request::Open {
             id,
@@ -487,6 +491,7 @@ fn dispatch(
             format,
             out,
             sheet,
+            overrides,
         } => {
             let handle = match state.touch(&handle) {
                 Ok(handle) => handle,
@@ -522,11 +527,16 @@ fn dispatch(
             let sender = worker_sender.clone();
             thread::spawn(move || {
                 let outcome = match format {
-                    ExportFormat::Csv => export_csv(&handle.store, sheet, Path::new(&out), &cancel),
-                    ExportFormat::Xlsx => {
-                        wax_write::write_xlsx(&handle.store, Path::new(&out), &cancel)
-                            .map_err(writer_failure)
+                    ExportFormat::Csv => {
+                        export_csv(&handle.store, sheet, Path::new(&out), &overrides, &cancel)
                     }
+                    ExportFormat::Xlsx => wax_write::write_xlsx_with_overrides(
+                        &handle.store,
+                        Path::new(&out),
+                        &overrides,
+                        &cancel,
+                    )
+                    .map_err(writer_failure),
                 }
                 .map(|mut outcome| {
                     outcome.dropped.extend(handle.warnings);
@@ -690,9 +700,11 @@ fn export_csv(
     store: &WorkbookStore,
     sheet: u32,
     out: &Path,
+    overrides: &[CellOverride],
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, Failure> {
-    wax_write::write_csv(store, sheet, out, cancel).map_err(writer_failure)
+    wax_write::write_csv_with_overrides(store, sheet, out, overrides, cancel)
+        .map_err(writer_failure)
 }
 
 fn writer_failure(error: wax_write::WriteError) -> Failure {
@@ -783,7 +795,7 @@ mod tests {
         });
         let temp = tempfile::tempdir().expect("temp directory");
         let out = temp.path().join("quoted.csv");
-        export_csv(&store, 0, &out, &AtomicBool::new(false)).expect("export should work");
+        export_csv(&store, 0, &out, &[], &AtomicBool::new(false)).expect("export should work");
         assert_eq!(
             std::fs::read(&out).expect("csv should be readable"),
             b"\"say \"\"hello\"\",\nfriend\"\r\n"
@@ -840,7 +852,7 @@ mod tests {
         ));
         let temp = tempfile::tempdir().expect("temp directory");
         let out = temp.path().join("raw.csv");
-        export_csv(&store, 0, &out, &AtomicBool::new(false)).expect("export should work");
+        export_csv(&store, 0, &out, &[], &AtomicBool::new(false)).expect("export should work");
         assert_eq!(
             std::fs::read(&out).expect("csv should be readable"),
             b"1.25,FALSE,\r\n"
@@ -870,7 +882,7 @@ mod tests {
         });
         let temp = tempfile::tempdir().expect("temp directory");
         let out = temp.path().join("cancelled.csv");
-        let error = export_csv(&store, 0, &out, &AtomicBool::new(true))
+        let error = export_csv(&store, 0, &out, &[], &AtomicBool::new(true))
             .expect_err("cancelled export should fail");
         assert_eq!(error.code, ErrorCode::Cancelled);
         assert!(!out.exists(), "cancelled export left an output file");

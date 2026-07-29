@@ -15,7 +15,7 @@
 //! round-trip validation build against. Changing these signatures requires a
 //! coordinator amendment; additive helpers are welcome.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,7 +26,8 @@ use rust_xlsxwriter::{
     Color, ExcelDateTime, Format, FormatUnderline, Formula, Workbook, Worksheet, XlsxError,
 };
 use tempfile::{Builder as TempFileBuilder, NamedTempFile};
-use wax_core::{CellStyle, CellType, CellValue};
+use wax_core::{CellOverride, CellStyle, CellType, CellValue, EXPORT_OVERRIDES_CAP};
+use wax_fmt::FmtValue;
 use wax_store::{WindowCell, WorkbookStore};
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
@@ -47,14 +48,26 @@ const UNREPRESENTABLE_MERGES_DROPPED: &str = "unrepresentable merge ranges";
 const CLAMPED_COLUMN_WIDTHS_DROPPED: &str = "column widths clamped to 0..=255";
 const XLSX_MAX_STRING_CHARS: usize = 32_767;
 const MAX_DROPPED_DETAILS: usize = 100;
+const XLSX_MAX_ROWS: u32 = 1_048_576;
+const XLSX_MAX_COLS: u32 = 16_384;
+/// Cell cap for override-extended sheet extents, mirroring the reader's
+/// declared-extent bomb rail (`ReaderOptions::max_declared_cells`).
+const OVERRIDE_EXTENT_CAP_CELLS: u64 = 8_000_000;
 
 /// A successful export: bytes written to the output file plus every feature
 /// of the model (or of the source, when the caller merges open-time
 /// warnings) that the export does not preserve. `dropped` entries are short
 /// human-readable phrases, e.g. `"pivot caches"`, `"cell borders"`.
+///
+/// `applied` counts the post-collapse distinct override cells applied to the
+/// exported sheet(s) — duplicates are last-wins (amendment A4) and, for CSV,
+/// only the exported sheet counts (amendment A6). Clearing an already-empty
+/// cell still counts: the override was accepted and the result matches the
+/// request. Zero when the export carried no overrides.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExportOutcome {
     pub bytes: u64,
+    pub applied: u64,
     pub dropped: Vec<String>,
 }
 
@@ -84,6 +97,130 @@ impl std::fmt::Display for WriteError {
 
 impl std::error::Error for WriteError {}
 
+/// Overrides collapsed per sheet: last-wins merged values keyed by
+/// coordinate (amendment A4), plus the maximum targeted row/column for
+/// recomputing sheet dims as `max(store dims, override max + 1)`.
+#[derive(Debug, Default)]
+struct SheetOverrides {
+    cells: HashMap<(u32, u32), Option<CellValue>>,
+    max_row: u32,
+    max_col: u32,
+}
+
+/// Validate and collapse export overrides (v0.2 contract). `scope` limits
+/// the collapse to one sheet for CSV (amendment A6: overrides targeting
+/// other sheets are ignored, not rejected) — but an out-of-range sheet
+/// index is `bad_request` in every format, never a silent skip (A5), and
+/// extent growth breaching the cell cap is `bomb` (A5).
+fn collapse_overrides(
+    store: &WorkbookStore,
+    overrides: &[CellOverride],
+    scope: Option<u32>,
+) -> Result<HashMap<u32, SheetOverrides>, WriteError> {
+    if overrides.len() > EXPORT_OVERRIDES_CAP {
+        return Err(WriteError::new(
+            "bad_request",
+            format!(
+                "overrides length {} exceeds the {EXPORT_OVERRIDES_CAP}-entry cap",
+                overrides.len()
+            ),
+        ));
+    }
+    let sheet_count = store.sheet_count();
+    let mut collapsed: HashMap<u32, SheetOverrides> = HashMap::new();
+    for (index, entry) in overrides.iter().enumerate() {
+        if entry.sheet >= sheet_count {
+            return Err(WriteError::new(
+                "bad_request",
+                format!(
+                    "overrides[{index}] sheet index {} is out of range",
+                    entry.sheet
+                ),
+            ));
+        }
+        if let Some(CellValue::Number(number)) = &entry.v {
+            if !number.is_finite() {
+                return Err(WriteError::new(
+                    "bad_request",
+                    format!("overrides[{index}].v must be a finite number"),
+                ));
+            }
+        }
+        if scope.is_some_and(|sheet| sheet != entry.sheet) {
+            continue;
+        }
+        let sheet = collapsed.entry(entry.sheet).or_default();
+        sheet.max_row = sheet.max_row.max(entry.r);
+        sheet.max_col = sheet.max_col.max(entry.c);
+        sheet.cells.insert((entry.r, entry.c), entry.v.clone());
+    }
+    for (sheet_index, sheet) in &collapsed {
+        let meta = store.sheet_meta(*sheet_index).ok_or_else(|| {
+            WriteError::new(
+                "internal",
+                format!("sheet index {sheet_index} disappeared during override collapse"),
+            )
+        })?;
+        let rows = meta.rows.max(sheet.max_row.saturating_add(1));
+        let cols = meta.cols.max(sheet.max_col.saturating_add(1));
+        let original = u64::from(meta.rows) * u64::from(meta.cols);
+        let extended = u64::from(rows) * u64::from(cols);
+        if extended > OVERRIDE_EXTENT_CAP_CELLS && extended > original {
+            return Err(WriteError::new(
+                "bomb",
+                format!(
+                    "overrides extend sheet {name:?} to {rows}x{cols} ({extended} cells), \
+                     exceeding the {OVERRIDE_EXTENT_CAP_CELLS} cell limit",
+                    name = meta.name
+                ),
+            ));
+        }
+    }
+    Ok(collapsed)
+}
+
+/// Build the cell an override produces (amendments A1–A3): the value is
+/// replaced, the display string is recomputed by re-rendering the retained
+/// format code through wax-fmt (`None` when nothing is retained, so CSV
+/// falls back to raw), the style id and format code of an overridden cell
+/// are kept, a formula is always dropped, strings are never reinterpreted
+/// as formulas, and numbers are never coerced to dates. A synthesized cell
+/// (`stored: None`) retains nothing and lands on the XF-0 base style.
+///
+/// Display recompute uses the 1900 epoch: the exported workbook is always
+/// 1900-based (date cells travel as ISO text through `ExcelDateTime`), so
+/// this matches what wax's own reader shows on read-back of the export.
+fn overridden_cell(stored: Option<&WindowCell>, value: Option<&CellValue>) -> WindowCell {
+    let fmt = stored.and_then(|cell| cell.fmt.clone());
+    let (t, d) = match value {
+        None => (CellType::S, None),
+        Some(CellValue::Number(number)) => (
+            CellType::N,
+            render_override_display(fmt.as_deref(), FmtValue::Number(*number)),
+        ),
+        Some(CellValue::Text(text)) => (
+            CellType::S,
+            render_override_display(fmt.as_deref(), FmtValue::Text(text)),
+        ),
+        Some(CellValue::Bool(boolean)) => (
+            CellType::B,
+            render_override_display(fmt.as_deref(), FmtValue::Bool(*boolean)),
+        ),
+    };
+    WindowCell {
+        t,
+        v: value.cloned(),
+        d,
+        f: None,
+        fmt,
+        s: stored.and_then(|cell| cell.s),
+    }
+}
+
+fn render_override_display(fmt: Option<&str>, value: FmtValue<'_>) -> Option<String> {
+    fmt.and_then(|code| wax_fmt::render(code, value, false))
+}
+
 /// Write the whole workbook as a styled xlsx copy: values, types, formula
 /// text with cached results, number formats, merges, explicit column widths,
 /// and basic cell styles. `cancel` is checked at row-granularity
@@ -95,10 +232,55 @@ pub fn write_xlsx(
     out: &Path,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
+    write_xlsx_with_overrides(store, out, &[], cancel)
+}
+
+/// [`write_xlsx`] with edited cell values layered over the read model per
+/// the v0.2 export-with-overrides contract. The store is never mutated —
+/// export stays side-effect-free; overrides are merged over the writer's
+/// sheet scan, remaining out-of-extent overrides are synthesized as cells,
+/// and sheet dims grow to `max(store dims, override max + 1)`.
+pub fn write_xlsx_with_overrides(
+    store: &WorkbookStore,
+    out: &Path,
+    overrides: &[CellOverride],
+    cancel: &AtomicBool,
+) -> Result<ExportOutcome, WriteError> {
     checkpoint(cancel)?;
     if store.sheet_count() == 0 {
         return Err(WriteError::new("bad_request", "empty workbook"));
     }
+    let sheet_overrides = collapse_overrides(store, overrides, None)?;
+    // The xlsx grid itself is an extent cap (A5: `too_large`). Checked after
+    // collapse so the `bad_request` taxonomy (cap, unknown sheet) wins when
+    // both apply.
+    for (index, entry) in overrides.iter().enumerate() {
+        if entry.r >= XLSX_MAX_ROWS {
+            return Err(WriteError::new(
+                "too_large",
+                format!(
+                    "overrides[{index}] targets row {}, exceeding the xlsx limit of \
+                     {XLSX_MAX_ROWS} rows",
+                    entry.r
+                ),
+            ));
+        }
+        if entry.c >= XLSX_MAX_COLS {
+            return Err(WriteError::new(
+                "too_large",
+                format!(
+                    "overrides[{index}] targets column {}, exceeding the xlsx limit of \
+                     {XLSX_MAX_COLS} columns",
+                    entry.c
+                ),
+            ));
+        }
+    }
+    let applied = sheet_overrides
+        .values()
+        .map(|sheet| sheet.cells.len() as u64)
+        .sum();
+    let mut replaced_formula_cells = 0_usize;
 
     let mut workbook = Workbook::new();
     let mut formats = HashMap::new();
@@ -173,12 +355,15 @@ pub fn write_xlsx(
             }
         }
 
+        let overrides_for_sheet = sheet_overrides.get(&sheet_index);
+        let mut consumed_overrides = HashSet::new();
+        let mut replaced_formulas = HashSet::new();
         let mut last_row = None;
         let mut scan_error = None;
         let mut sheet_formula_patches = Vec::new();
         let mut previous_position = None;
         let mut previous_had_formula = false;
-        let scanned = store.scan_sheet(sheet_index, |row, column, cell| {
+        let scanned = store.scan_sheet(sheet_index, |row, column, stored_cell| {
             if scan_error.is_some() {
                 return;
             }
@@ -193,6 +378,16 @@ pub fn write_xlsx(
                 scan_error = Some(error);
                 return;
             }
+            let cell = match overrides_for_sheet.and_then(|sheet| sheet.cells.get(&(row, column))) {
+                Some(value) => {
+                    consumed_overrides.insert((row, column));
+                    if stored_cell.f.is_some() {
+                        replaced_formulas.insert((row, column));
+                    }
+                    overridden_cell(Some(&stored_cell), value.as_ref())
+                }
+                None => stored_cell,
+            };
             let position = (row, column);
             if previous_position == Some(position) && previous_had_formula {
                 sheet_formula_patches.pop();
@@ -254,7 +449,45 @@ pub fn write_xlsx(
         if let Some(error) = scan_error {
             return Err(error);
         }
+        replaced_formula_cells += replaced_formulas.len();
+
+        // Overrides not consumed by the scan target cells the store holds
+        // nothing for (in-extent empties or beyond the extent): synthesize
+        // them, sorted for determinism. Clearing an empty cell is a no-op.
+        if let Some(sheet) = overrides_for_sheet {
+            let mut remaining = sheet
+                .cells
+                .iter()
+                .filter(|(position, _)| !consumed_overrides.contains(*position))
+                .collect::<Vec<_>>();
+            remaining.sort_by_key(|(position, _)| **position);
+            for (&(row, column), value) in remaining {
+                checkpoint(cancel)?;
+                if value.is_none() {
+                    continue;
+                }
+                let cell = overridden_cell(None, value.as_ref());
+                write_xlsx_cell(
+                    worksheet,
+                    &mut formats,
+                    store.styles(),
+                    &meta.name,
+                    row,
+                    column,
+                    &cell,
+                    None,
+                    &mut dropped,
+                    out,
+                )?;
+            }
+        }
         formula_patches.push(sheet_formula_patches);
+    }
+
+    if replaced_formula_cells > 0 {
+        dropped.add(format!(
+            "formulas replaced by edited values ({replaced_formula_cells})"
+        ));
     }
 
     checkpoint(cancel)?;
@@ -277,6 +510,7 @@ pub fn write_xlsx(
 
     Ok(ExportOutcome {
         bytes,
+        applied,
         dropped: dropped.finish(),
     })
 }
@@ -292,6 +526,21 @@ pub fn write_csv(
     out: &Path,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
+    write_csv_with_overrides(store, sheet, out, &[], cancel)
+}
+
+/// [`write_csv`] with edited cell values layered over the read model per
+/// the v0.2 export-with-overrides contract. CSV exports one sheet, so
+/// overrides targeting other (valid) sheets are ignored and `applied`
+/// counts only the exported sheet (amendment A6). The store is never
+/// mutated — export stays side-effect-free.
+pub fn write_csv_with_overrides(
+    store: &WorkbookStore,
+    sheet: u32,
+    out: &Path,
+    overrides: &[CellOverride],
+    cancel: &AtomicBool,
+) -> Result<ExportOutcome, WriteError> {
     let meta = store.sheet_meta(sheet).ok_or_else(|| {
         WriteError::new(
             "bad_request",
@@ -299,6 +548,30 @@ pub fn write_csv(
         )
     })?;
     checkpoint(cancel)?;
+    let mut collapsed = collapse_overrides(store, overrides, Some(sheet))?;
+    let sheet_overrides = collapsed.remove(&sheet).unwrap_or_default();
+    let applied = sheet_overrides.cells.len() as u64;
+    let (out_rows, out_cols) = if sheet_overrides.cells.is_empty() {
+        (meta.rows, meta.cols)
+    } else {
+        (
+            meta.rows.max(sheet_overrides.max_row.saturating_add(1)),
+            meta.cols.max(sheet_overrides.max_col.saturating_add(1)),
+        )
+    };
+
+    // A1: every override starts as its synthesized rendering (no retained
+    // format code, so `d` is null and CSV falls back to raw); the scan
+    // upgrades entries whose position holds a stored cell with that cell's
+    // retained format code and style.
+    let mut override_rows: HashMap<u32, BTreeMap<u32, WindowCell>> = HashMap::new();
+    for (&(row, column), value) in &sheet_overrides.cells {
+        override_rows
+            .entry(row)
+            .or_default()
+            .insert(column, overridden_cell(None, value.as_ref()));
+    }
+    let mut replaced_formulas = HashSet::new();
 
     let mut temp = temporary_output(out, ".csv")?;
     {
@@ -315,9 +588,14 @@ pub fn write_csv(
 
             if pending_row != Some(row) {
                 if let Some(previous_row) = pending_row.take() {
-                    if let Err(error) =
-                        write_csv_row(&mut output, meta.cols, &pending_cells, cancel, out)
-                    {
+                    if let Err(error) = write_csv_row(
+                        &mut output,
+                        out_cols,
+                        &pending_cells,
+                        override_rows.get(&previous_row),
+                        cancel,
+                        out,
+                    ) {
                         scan_error = Some(error);
                         return;
                     }
@@ -326,13 +604,34 @@ pub fn write_csv(
                 }
 
                 while next_output_row < row {
-                    if let Err(error) = write_csv_row(&mut output, meta.cols, &[], cancel, out) {
+                    if let Err(error) = write_csv_row(
+                        &mut output,
+                        out_cols,
+                        &[],
+                        override_rows.get(&next_output_row),
+                        cancel,
+                        out,
+                    ) {
                         scan_error = Some(error);
                         return;
                     }
                     next_output_row = next_output_row.saturating_add(1);
                 }
                 pending_row = Some(row);
+            }
+
+            if let Some(value) = sheet_overrides.cells.get(&(row, column)) {
+                // The stored cell is superseded; upgrade the override's
+                // rendering with its retained format code instead of
+                // queueing it (last stored duplicate wins here too).
+                if cell.f.is_some() {
+                    replaced_formulas.insert((row, column));
+                }
+                override_rows
+                    .entry(row)
+                    .or_default()
+                    .insert(column, overridden_cell(Some(&cell), value.as_ref()));
+                return;
             }
 
             if let Some((last_column, last_cell)) = pending_cells.last_mut() {
@@ -354,11 +653,25 @@ pub fn write_csv(
         }
 
         if let Some(row) = pending_row {
-            write_csv_row(&mut output, meta.cols, &pending_cells, cancel, out)?;
+            write_csv_row(
+                &mut output,
+                out_cols,
+                &pending_cells,
+                override_rows.get(&row),
+                cancel,
+                out,
+            )?;
             next_output_row = row.saturating_add(1);
         }
-        while next_output_row < meta.rows {
-            write_csv_row(&mut output, meta.cols, &[], cancel, out)?;
+        while next_output_row < out_rows {
+            write_csv_row(
+                &mut output,
+                out_cols,
+                &[],
+                override_rows.get(&next_output_row),
+                cancel,
+                out,
+            )?;
             next_output_row = next_output_row.saturating_add(1);
         }
 
@@ -377,12 +690,20 @@ pub fn write_csv(
         .len();
     persist_output(temp, out)?;
 
+    let mut dropped = CSV_DROPPED
+        .iter()
+        .map(|entry| (*entry).to_owned())
+        .collect::<Vec<_>>();
+    if !replaced_formulas.is_empty() {
+        dropped.push(format!(
+            "formulas replaced by edited values ({})",
+            replaced_formulas.len()
+        ));
+    }
     Ok(ExportOutcome {
         bytes,
-        dropped: CSV_DROPPED
-            .iter()
-            .map(|entry| (*entry).to_owned())
-            .collect(),
+        applied,
+        dropped,
     })
 }
 
@@ -1141,6 +1462,7 @@ fn write_csv_row(
     output: &mut impl Write,
     columns: u32,
     cells: &[(u32, WindowCell)],
+    overrides: Option<&BTreeMap<u32, WindowCell>>,
     cancel: &AtomicBool,
     out: &Path,
 ) -> Result<(), WriteError> {
@@ -1152,12 +1474,18 @@ fn write_csv_row(
                 .write_all(b",")
                 .map_err(|error| io_error("write CSV output", out, error))?;
         }
-        if let Some((cell_column, cell)) = cells.get(cell_index) {
-            if *cell_column == column {
-                write_csv_field(output, cell)
-                    .map_err(|error| io_error("write CSV output", out, error))?;
+        let stored = cells.get(cell_index).and_then(|(cell_column, cell)| {
+            (*cell_column == column).then(|| {
                 cell_index += 1;
-            }
+                cell
+            })
+        });
+        let cell = overrides
+            .and_then(|row_cells| row_cells.get(&column))
+            .or(stored);
+        if let Some(cell) = cell {
+            write_csv_field(output, cell)
+                .map_err(|error| io_error("write CSV output", out, error))?;
         }
     }
     output
@@ -2448,5 +2776,743 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(cancelled.code, "cancelled");
+    }
+
+    // ---- v0.2 export-with-overrides (docs/v0.2-overrides-contract.md) ----
+
+    fn ov(sheet: u32, r: u32, c: u32, v: Option<CellValue>) -> CellOverride {
+        CellOverride { sheet, r, c, v }
+    }
+
+    fn csv_with_overrides(
+        store: &WorkbookStore,
+        overrides: &[CellOverride],
+    ) -> (String, ExportOutcome) {
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("overrides.csv");
+        let outcome = write_csv_with_overrides(store, 0, &out, overrides, &AtomicBool::new(false))
+            .expect("csv export should work");
+        (
+            std::fs::read_to_string(&out).expect("csv should be readable"),
+            outcome,
+        )
+    }
+
+    /// Amendment A1, the mandatory regression: CSV is display-else-raw, so a
+    /// stale `d` would silently export the OLD value. The override must
+    /// recompute `d` through the retained format code.
+    #[test]
+    fn a1_csv_exports_the_recomputed_display_never_the_stale_one() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                1,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::N,
+                    Some(CellValue::Number(1.0)),
+                    Some("1.00"),
+                    None,
+                    Some("0.00"),
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+
+        let (csv, outcome) =
+            csv_with_overrides(&store, &[ov(0, 0, 0, Some(CellValue::Number(2.0)))]);
+        assert_eq!(csv, "2.00\r\n");
+        assert_eq!(outcome.applied, 1);
+
+        // The same override through the xlsx path replaces the value.
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("overrides.xlsx");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[ov(0, 0, 0, Some(CellValue::Number(2.0)))],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
+        assert_eq!(outcome.applied, 1);
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert_eq!(cells[&(0, 0)].v, Some(CellValue::Number(2.0)));
+    }
+
+    /// Amendment A1: with no retained format code `d` becomes null and CSV
+    /// falls back to the raw value, ignoring any stale display string.
+    #[test]
+    fn a1_display_falls_back_to_raw_without_a_retained_format_code() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                2,
+                vec![
+                    cell(
+                        0,
+                        0,
+                        CellType::S,
+                        Some(CellValue::Text("old".to_owned())),
+                        Some("OLD DISPLAY"),
+                        None,
+                        None,
+                        None,
+                    ),
+                    cell(
+                        0,
+                        1,
+                        CellType::S,
+                        Some(CellValue::Text("keep".to_owned())),
+                        Some("KEEP"),
+                        None,
+                        None,
+                        None,
+                    ),
+                ],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let (csv, outcome) = csv_with_overrides(
+            &store,
+            &[
+                ov(0, 0, 0, Some(CellValue::Number(2.5))),
+                ov(0, 1, 0, Some(CellValue::Bool(true))),
+                ov(0, 1, 1, Some(CellValue::Text("=1+2".to_owned()))),
+            ],
+        );
+        assert_eq!(csv, "2.5,KEEP\r\nTRUE,=1+2\r\n");
+        assert_eq!(outcome.applied, 3);
+    }
+
+    /// Amendment A2: overriding an existing cell keeps its style id and
+    /// format code; a cell created beyond the original extent has neither
+    /// and lands on the XF-0 base style.
+    #[test]
+    fn a2_overrides_keep_style_and_format_and_new_cells_land_on_xf0() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                1,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::N,
+                    Some(CellValue::Number(1.0)),
+                    None,
+                    None,
+                    Some("0.00"),
+                    Some(0),
+                )],
+                &[],
+            )],
+            vec![CellStyle {
+                bold: true,
+                ..CellStyle::default()
+            }],
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("styled.xlsx");
+        write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[
+                ov(0, 0, 0, Some(CellValue::Number(3.0))),
+                ov(0, 0, 2, Some(CellValue::Number(7.0))),
+            ],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
+
+        let styles = zip_text(&out, "xl/styles.xml");
+        assert!(styles.contains("<b/>"), "{styles}");
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        let overridden = cells[&(0, 0)];
+        assert_eq!(overridden.v, Some(CellValue::Number(3.0)));
+        assert_eq!(overridden.fmt.as_deref(), Some("0.00"));
+        assert_eq!(overridden.d.as_deref(), Some("3.00"));
+        let style = overridden
+            .s
+            .and_then(|id| actual.styles.get(id as usize))
+            .expect("overridden cell should keep a style");
+        assert!(style.bold);
+        let synthesized = cells[&(0, 2)];
+        assert_eq!(synthesized.v, Some(CellValue::Number(7.0)));
+        assert_eq!(synthesized.fmt, None);
+        let synthesized_bold = synthesized
+            .s
+            .and_then(|id| actual.styles.get(id as usize))
+            .is_some_and(|style| style.bold);
+        assert!(
+            !synthesized_bold,
+            "synthesized cell must not inherit styling"
+        );
+    }
+
+    /// Amendment A3: a numeric override into a date-formatted cell is stored
+    /// as a number; the retained format code makes wax's own reader type it
+    /// as a date on read-back, and the recomputed display shows the date.
+    #[test]
+    fn a3_numeric_override_is_never_coerced_but_reads_back_as_a_date() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                1,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::D,
+                    Some(CellValue::Text("2020-01-01".to_owned())),
+                    Some("2020-01-01"),
+                    None,
+                    Some("yyyy-mm-dd"),
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+
+        // Serial 45000 in the 1900 system is 2023-03-15.
+        let (csv, _) = csv_with_overrides(&store, &[ov(0, 0, 0, Some(CellValue::Number(45000.0)))]);
+        assert_eq!(csv, "2023-03-15\r\n");
+
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("date.xlsx");
+        write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[ov(0, 0, 0, Some(CellValue::Number(45000.0)))],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
+        let raw_sheet = zip_text(&out, "xl/worksheets/sheet1.xml");
+        assert!(
+            raw_sheet.contains("<v>45000</v>"),
+            "the stored value must stay the raw number: {raw_sheet}"
+        );
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert_eq!(cells[&(0, 0)].t, CellType::D);
+        assert_eq!(
+            cells[&(0, 0)].v,
+            Some(CellValue::Text("2023-03-15".to_owned()))
+        );
+    }
+
+    /// Amendment A4: duplicates are last-wins in array order and `applied`
+    /// counts post-collapse distinct cells.
+    #[test]
+    fn a4_duplicate_overrides_are_last_wins_and_applied_counts_post_collapse() {
+        let store = store_with(vec![sheet("S", 1, 2, Vec::new(), &[])], Vec::new());
+        let overrides = [
+            ov(0, 0, 0, Some(CellValue::Number(1.0))),
+            ov(0, 0, 1, Some(CellValue::Number(3.0))),
+            ov(0, 0, 0, Some(CellValue::Number(2.0))),
+        ];
+        let (csv, outcome) = csv_with_overrides(&store, &overrides);
+        assert_eq!(csv, "2,3\r\n");
+        assert_eq!(outcome.applied, 2);
+
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("dupes.xlsx");
+        let outcome = write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
+            .expect("xlsx export should work");
+        assert_eq!(outcome.applied, 2);
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert_eq!(cells[&(0, 0)].v, Some(CellValue::Number(2.0)));
+    }
+
+    /// Amendment A5: bad requests (cap, unknown sheet) are `bad_request`;
+    /// extent growth breaching the cell caps is `bomb` or `too_large`.
+    #[test]
+    fn a5_error_taxonomy_splits_bad_request_from_extent_rails() {
+        let store = store_with(vec![sheet("S", 1, 1, Vec::new(), &[])], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let cancel = AtomicBool::new(false);
+
+        let unknown_sheet = [ov(5, 0, 0, Some(CellValue::Number(1.0)))];
+        for error in [
+            write_xlsx_with_overrides(&store, &temp.path().join("a.xlsx"), &unknown_sheet, &cancel)
+                .unwrap_err(),
+            write_csv_with_overrides(
+                &store,
+                0,
+                &temp.path().join("a.csv"),
+                &unknown_sheet,
+                &cancel,
+            )
+            .unwrap_err(),
+        ] {
+            assert_eq!(error.code, "bad_request");
+            assert!(error.msg.contains("sheet index 5"), "{}", error.msg);
+        }
+
+        let over_cap = (0..u32::try_from(EXPORT_OVERRIDES_CAP).unwrap() + 1)
+            .map(|index| ov(0, 0, index % 3, Some(CellValue::Number(1.0))))
+            .collect::<Vec<_>>();
+        let error =
+            write_csv_with_overrides(&store, 0, &temp.path().join("b.csv"), &over_cap, &cancel)
+                .unwrap_err();
+        assert_eq!(error.code, "bad_request");
+        assert!(error.msg.contains("100000-entry cap"), "{}", error.msg);
+
+        let bomb = [ov(0, 9_000_000, 0, Some(CellValue::Number(1.0)))];
+        let error = write_csv_with_overrides(&store, 0, &temp.path().join("c.csv"), &bomb, &cancel)
+            .unwrap_err();
+        assert_eq!(error.code, "bomb");
+        assert!(error.msg.contains("8000000 cell limit"), "{}", error.msg);
+
+        let error = write_xlsx_with_overrides(
+            &store,
+            &temp.path().join("d.xlsx"),
+            &[ov(0, 1_048_576, 0, Some(CellValue::Number(1.0)))],
+            &cancel,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "too_large");
+        assert!(error.msg.contains("1048576"), "{}", error.msg);
+
+        let error = write_xlsx_with_overrides(
+            &store,
+            &temp.path().join("e.xlsx"),
+            &[ov(0, 0, 16_384, Some(CellValue::Number(1.0)))],
+            &cancel,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "too_large");
+        assert!(error.msg.contains("16384"), "{}", error.msg);
+
+        let non_finite = [ov(0, 0, 0, Some(CellValue::Number(f64::NAN)))];
+        for error in [
+            write_xlsx_with_overrides(&store, &temp.path().join("f.xlsx"), &non_finite, &cancel)
+                .unwrap_err(),
+            write_csv_with_overrides(&store, 0, &temp.path().join("f.csv"), &non_finite, &cancel)
+                .unwrap_err(),
+        ] {
+            assert_eq!(error.code, "bad_request");
+            assert!(error.msg.contains("finite"), "{}", error.msg);
+        }
+    }
+
+    /// A large sheet whose extent already exceeds the cap still exports when
+    /// overrides stay inside it — the bomb rail fires only on growth.
+    #[test]
+    fn a5_extent_bomb_fires_only_when_overrides_grow_the_extent() {
+        // 9,000,000 declared cells, sparse: one stored value.
+        let store = store_with(
+            vec![sheet(
+                "Big",
+                9_000_000,
+                1,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::N,
+                    Some(CellValue::Number(1.0)),
+                    None,
+                    None,
+                    None,
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let cancel = AtomicBool::new(false);
+        // In-extent override on an over-cap sheet: allowed (no growth) — but
+        // don't actually write 9M CSV rows here; assert collapse passes.
+        let collapsed = collapse_overrides(
+            &store,
+            &[ov(0, 100, 0, Some(CellValue::Number(2.0)))],
+            Some(0),
+        )
+        .expect("in-extent override on a large sheet should collapse");
+        assert_eq!(collapsed[&0].cells.len(), 1);
+        // Growth on the over-cap sheet: refused.
+        let error = write_csv_with_overrides(
+            &store,
+            0,
+            &temp.path().join("grown.csv"),
+            &[ov(0, 9_000_000, 0, Some(CellValue::Number(2.0)))],
+            &cancel,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "bomb");
+    }
+
+    /// Amendment A6: CSV exports one sheet; overrides for other (valid)
+    /// sheets are ignored, and `applied` counts only the exported sheet.
+    #[test]
+    fn a6_csv_ignores_other_sheet_overrides_and_counts_only_the_exported_sheet() {
+        let mut second = sheet("Two", 1, 1, Vec::new(), &[]);
+        second.index = 1;
+        let store = store_with(
+            vec![sheet("One", 1, 1, Vec::new(), &[]), second],
+            Vec::new(),
+        );
+        let overrides = [
+            ov(0, 0, 0, Some(CellValue::Text("first".to_owned()))),
+            ov(1, 0, 0, Some(CellValue::Text("second".to_owned()))),
+        ];
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("sheet0.csv");
+        let outcome =
+            write_csv_with_overrides(&store, 0, &out, &overrides, &AtomicBool::new(false))
+                .expect("csv export should work");
+        assert_eq!(outcome.applied, 1);
+        assert_eq!(
+            std::fs::read_to_string(&out).expect("csv should be readable"),
+            "first\r\n"
+        );
+        let out = temp.path().join("sheet1.csv");
+        let outcome =
+            write_csv_with_overrides(&store, 1, &out, &overrides, &AtomicBool::new(false))
+                .expect("csv export should work");
+        assert_eq!(outcome.applied, 1);
+        assert_eq!(
+            std::fs::read_to_string(&out).expect("csv should be readable"),
+            "second\r\n"
+        );
+        // xlsx applies the whole edit set.
+        let out = temp.path().join("both.xlsx");
+        let outcome = write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
+            .expect("xlsx export should work");
+        assert_eq!(outcome.applied, 2);
+        let actual = read_xlsx(&out);
+        assert_eq!(
+            cells_by_position(&actual, 0)[&(0, 0)].v,
+            Some(CellValue::Text("first".to_owned()))
+        );
+        assert_eq!(
+            cells_by_position(&actual, 1)[&(0, 0)].v,
+            Some(CellValue::Text("second".to_owned()))
+        );
+    }
+
+    /// Strings beginning with `=` are stored as text, never reinterpreted as
+    /// formulas (contract: apiary phase-2 policy).
+    #[test]
+    fn override_strings_starting_with_equals_stay_text() {
+        let store = store_with(vec![sheet("S", 1, 1, Vec::new(), &[])], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("equals.xlsx");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[ov(0, 0, 0, Some(CellValue::Text("=SUM(A1:A2)".to_owned())))],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
+        assert!(
+            !outcome
+                .dropped
+                .iter()
+                .any(|entry| entry.contains("formula")),
+            "{:?}",
+            outcome.dropped
+        );
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert_eq!(cells[&(0, 0)].f, None);
+        assert_eq!(
+            cells[&(0, 0)].v,
+            Some(CellValue::Text("=SUM(A1:A2)".to_owned()))
+        );
+    }
+
+    /// Overriding a formula cell drops the formula in favour of the literal
+    /// value, recorded loudly with a count.
+    #[test]
+    fn overriding_formula_cells_drops_the_formulas_loudly_with_a_count() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                3,
+                vec![
+                    cell(
+                        0,
+                        0,
+                        CellType::N,
+                        Some(CellValue::Number(3.0)),
+                        None,
+                        Some("1+2"),
+                        None,
+                        None,
+                    ),
+                    cell(
+                        0,
+                        1,
+                        CellType::N,
+                        Some(CellValue::Number(4.0)),
+                        None,
+                        Some("2+2"),
+                        None,
+                        None,
+                    ),
+                    cell(
+                        0,
+                        2,
+                        CellType::N,
+                        Some(CellValue::Number(5.0)),
+                        None,
+                        Some("2+3"),
+                        None,
+                        None,
+                    ),
+                ],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("formulas.xlsx");
+        let overrides = [
+            ov(0, 0, 0, Some(CellValue::Number(30.0))),
+            ov(0, 0, 1, Some(CellValue::Number(40.0))),
+        ];
+        let outcome = write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
+            .expect("xlsx export should work");
+        assert!(
+            outcome
+                .dropped
+                .contains(&"formulas replaced by edited values (2)".to_owned()),
+            "{:?}",
+            outcome.dropped
+        );
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert_eq!(cells[&(0, 0)].f, None);
+        assert_eq!(cells[&(0, 0)].v, Some(CellValue::Number(30.0)));
+        assert_eq!(cells[&(0, 1)].f, None);
+        assert_eq!(cells[&(0, 2)].f.as_deref(), Some("2+3"));
+        assert_eq!(cells[&(0, 2)].v, Some(CellValue::Number(5.0)));
+
+        let (_, outcome) = csv_with_overrides(&store, &overrides[..1]);
+        assert!(
+            outcome
+                .dropped
+                .contains(&"formulas replaced by edited values (1)".to_owned()),
+            "{:?}",
+            outcome.dropped
+        );
+    }
+
+    /// `v: null` clears the cell; clearing keeps a formatted cell's styling
+    /// (blank write) and clearing a cell that holds nothing is a counted
+    /// no-op.
+    #[test]
+    fn null_override_clears_the_cell() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                2,
+                vec![
+                    cell(
+                        0,
+                        0,
+                        CellType::S,
+                        Some(CellValue::Text("gone".to_owned())),
+                        Some("gone"),
+                        None,
+                        Some("@"),
+                        None,
+                    ),
+                    cell(
+                        0,
+                        1,
+                        CellType::N,
+                        Some(CellValue::Number(5.0)),
+                        None,
+                        None,
+                        None,
+                        None,
+                    ),
+                ],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let (csv, outcome) = csv_with_overrides(&store, &[ov(0, 0, 0, None)]);
+        assert_eq!(csv, ",5\r\n");
+        assert_eq!(outcome.applied, 1);
+
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("cleared.xlsx");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            // The second entry clears a cell that holds nothing:
+            // a no-op that is still accepted and counted.
+            &[ov(0, 0, 0, None), ov(0, 1, 0, None)],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
+        assert_eq!(outcome.applied, 2);
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert!(
+            cells.get(&(0, 0)).is_none_or(|cell| cell.v.is_none()),
+            "cleared cell must hold no value"
+        );
+        assert_eq!(cells[&(0, 1)].v, Some(CellValue::Number(5.0)));
+        // The cleared value is gone from the sheet XML entirely.
+        let raw_sheet = zip_text(&out, "xl/worksheets/sheet1.xml");
+        assert!(!raw_sheet.contains("gone"), "{raw_sheet}");
+    }
+
+    /// Overrides may extend the used extent: out-of-extent cells are
+    /// synthesized and dims are recomputed as max(store, override max + 1).
+    #[test]
+    fn overrides_extend_the_extent_and_recompute_dims() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                2,
+                2,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::N,
+                    Some(CellValue::Number(1.0)),
+                    None,
+                    None,
+                    None,
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let overrides = [ov(0, 4, 3, Some(CellValue::Number(9.0)))];
+        let (csv, outcome) = csv_with_overrides(&store, &overrides);
+        assert_eq!(csv, "1,,,\r\n,,,\r\n,,,\r\n,,,\r\n,,,9\r\n");
+        assert_eq!(outcome.applied, 1);
+
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("extended.xlsx");
+        write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
+            .expect("xlsx export should work");
+        let actual = read_xlsx(&out);
+        assert_eq!(actual.sheets[0].rows, 5);
+        assert_eq!(actual.sheets[0].cols, 4);
+        assert_eq!(
+            cells_by_position(&actual, 0)[&(4, 3)].v,
+            Some(CellValue::Number(9.0))
+        );
+    }
+
+    /// The store is shared across handles: export must never mutate it, so a
+    /// second export of the same store is unaffected by earlier overrides.
+    #[test]
+    fn export_with_overrides_is_side_effect_free() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                1,
+                1,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::N,
+                    Some(CellValue::Number(1.0)),
+                    Some("1.00"),
+                    None,
+                    Some("0.00"),
+                    None,
+                )],
+                &[],
+            )],
+            Vec::new(),
+        );
+        let (csv, _) = csv_with_overrides(&store, &[ov(0, 0, 0, Some(CellValue::Number(2.0)))]);
+        assert_eq!(csv, "2.00\r\n");
+        let (csv, outcome) = csv_with_overrides(&store, &[]);
+        assert_eq!(csv, "1.00\r\n");
+        assert_eq!(outcome.applied, 0);
+    }
+
+    /// Contract note 1: the W5D oversized-string policy applies to overrides
+    /// — truncate on a character boundary, drop loudly, still succeed.
+    #[test]
+    fn oversized_string_override_truncates_loudly_and_the_export_succeeds() {
+        let store = store_with(vec![sheet("S", 1, 1, Vec::new(), &[])], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("long.xlsx");
+        let oversized = "x".repeat(XLSX_MAX_STRING_CHARS + 1);
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[ov(0, 0, 0, Some(CellValue::Text(oversized)))],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should succeed despite the oversized string");
+        assert!(
+            outcome
+                .dropped
+                .iter()
+                .any(|entry| entry.contains("truncated from 32768 to 32767")),
+            "{:?}",
+            outcome.dropped
+        );
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        let Some(CellValue::Text(text)) = &cells[&(0, 0)].v else {
+            panic!("expected a text cell");
+        };
+        assert_eq!(text.chars().count(), XLSX_MAX_STRING_CHARS);
+    }
+
+    /// Overrides work against cells inside merged ranges (anchor or not).
+    #[test]
+    fn overrides_apply_inside_merged_ranges() {
+        let store = store_with(
+            vec![sheet(
+                "S",
+                2,
+                2,
+                vec![cell(
+                    0,
+                    0,
+                    CellType::S,
+                    Some(CellValue::Text("anchor".to_owned())),
+                    None,
+                    None,
+                    None,
+                    None,
+                )],
+                &["A1:B2"],
+            )],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("merged.xlsx");
+        write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[
+                ov(0, 0, 0, Some(CellValue::Text("edited".to_owned()))),
+                ov(0, 1, 1, Some(CellValue::Text("corner".to_owned()))),
+            ],
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
+        let actual = read_xlsx(&out);
+        let cells = cells_by_position(&actual, 0);
+        assert_eq!(cells[&(0, 0)].v, Some(CellValue::Text("edited".to_owned())));
+        assert_eq!(cells[&(1, 1)].v, Some(CellValue::Text("corner".to_owned())));
     }
 }

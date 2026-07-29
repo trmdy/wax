@@ -2,9 +2,19 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use wax_core::{CellType, CellValue};
+use wax_core::{CellOverride, CellType, CellValue, EXPORT_OVERRIDES_CAP};
 
 pub const PROTO_VERSION: u32 = 0;
+
+/// Capability string advertising the v0.2 export-with-overrides operation.
+pub const CAP_EXPORT_OVERRIDES: &str = "exportOverrides";
+
+/// Every capability this server advertises on `version` and `open`
+/// responses. Additive — absence of `caps` means no capabilities; the
+/// `--version` line never carries capabilities (release-workflow contract).
+pub fn server_caps() -> Vec<String> {
+    vec![CAP_EXPORT_OVERRIDES.to_owned()]
+}
 pub const SERVE_DEFAULT_MAX_CELLS: u64 = 5_000_000;
 pub const SERVE_DEFAULT_MAX_BYTES: u64 = 100 * 1024 * 1024;
 pub const SERVE_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -61,7 +71,7 @@ impl fmt::Display for ErrorCode {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     Version {
         id: u64,
@@ -92,6 +102,7 @@ pub enum Request {
         format: String,
         out: String,
         sheet: u32,
+        overrides: Vec<CellOverride>,
     },
     Close {
         id: u64,
@@ -190,6 +201,11 @@ pub fn parse_request(line: &str) -> Result<Request, RequestError> {
             format: required_string(object, id, "format")?.to_owned(),
             out: required_string(object, id, "out")?.to_owned(),
             sheet: optional_u32(object, id, "sheet", 0)?,
+            overrides: match object.get("overrides") {
+                None => Vec::new(),
+                Some(value) => parse_overrides(value)
+                    .map_err(|message| RequestError::new(Some(id), message))?,
+            },
         }),
         "close" => Ok(Request::Close {
             id,
@@ -205,6 +221,62 @@ pub fn parse_request(line: &str) -> Result<Request, RequestError> {
             format!("unknown op {unknown:?}"),
         )),
     }
+}
+
+/// Parse an export `overrides` value: an array of `{sheet, r, c, v}` objects
+/// with zero-based u32 indices and `v` a JSON number, string, boolean, or
+/// `null` (clear). Errors are `bad_request`-grade messages naming the cap or
+/// the offending entry/field (contract amendment A5). Also used by the CLI
+/// `export --overrides` path, so the message carries no request id.
+pub fn parse_overrides(value: &Value) -> Result<Vec<CellOverride>, String> {
+    let entries = value
+        .as_array()
+        .ok_or_else(|| "overrides must be an array".to_owned())?;
+    if entries.len() > EXPORT_OVERRIDES_CAP {
+        return Err(format!(
+            "overrides length {} exceeds the {EXPORT_OVERRIDES_CAP}-entry cap",
+            entries.len()
+        ));
+    }
+    entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let object = entry
+                .as_object()
+                .ok_or_else(|| format!("overrides[{index}] must be an object"))?;
+            let coordinate = |field: &str| -> Result<u32, String> {
+                object
+                    .get(field)
+                    .and_then(Value::as_u64)
+                    .and_then(|value| u32::try_from(value).ok())
+                    .ok_or_else(|| format!("overrides[{index}].{field} must be a u32"))
+            };
+            let v = match object.get("v") {
+                Some(Value::Null) => None,
+                Some(Value::Number(number)) => {
+                    let number = number
+                        .as_f64()
+                        .filter(|number| number.is_finite())
+                        .ok_or_else(|| format!("overrides[{index}].v must be a finite number"))?;
+                    Some(CellValue::Number(number))
+                }
+                Some(Value::String(text)) => Some(CellValue::Text(text.clone())),
+                Some(Value::Bool(boolean)) => Some(CellValue::Bool(*boolean)),
+                None | Some(Value::Array(_)) | Some(Value::Object(_)) => {
+                    return Err(format!(
+                        "overrides[{index}].v must be a number, string, boolean, or null"
+                    ))
+                }
+            };
+            Ok(CellOverride {
+                sheet: coordinate("sheet")?,
+                r: coordinate("r")?,
+                c: coordinate("c")?,
+                v,
+            })
+        })
+        .collect()
 }
 
 fn required_string<'a>(
@@ -302,6 +374,7 @@ pub struct VersionResponse {
     pub ok: bool,
     pub proto: u32,
     pub version: String,
+    pub caps: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -317,6 +390,7 @@ pub struct OpenResponse {
     pub id: u64,
     pub ok: bool,
     pub proto: u32,
+    pub caps: Vec<String>,
     pub handle: String,
     pub truncated: bool,
     pub sheets: Vec<SheetSummary>,
@@ -362,6 +436,7 @@ pub struct ExportResponse {
     pub id: u64,
     pub ok: bool,
     pub bytes: u64,
+    pub applied: u64,
     pub dropped: Vec<String>,
 }
 
@@ -482,6 +557,153 @@ mod tests {
         ] {
             assert!(parse_request(line).is_err());
         }
+    }
+
+    #[test]
+    fn export_overrides_parse_each_value_kind_and_default_empty() {
+        let request = parse_request(
+            r#"{"id":9,"op":"export","handle":"h1","format":"csv","out":"/tmp/x.csv",
+                "overrides":[
+                    {"sheet":0,"r":1,"c":2,"v":42.5},
+                    {"sheet":1,"r":0,"c":0,"v":"=SUM(A1:A2)"},
+                    {"sheet":0,"r":3,"c":4,"v":true},
+                    {"sheet":0,"r":5,"c":6,"v":null}
+                ]}"#,
+        )
+        .expect("request should parse");
+        let Request::Export { overrides, .. } = request else {
+            panic!("expected export request");
+        };
+        assert_eq!(
+            overrides,
+            vec![
+                CellOverride {
+                    sheet: 0,
+                    r: 1,
+                    c: 2,
+                    v: Some(CellValue::Number(42.5)),
+                },
+                CellOverride {
+                    sheet: 1,
+                    r: 0,
+                    c: 0,
+                    v: Some(CellValue::Text("=SUM(A1:A2)".to_owned())),
+                },
+                CellOverride {
+                    sheet: 0,
+                    r: 3,
+                    c: 4,
+                    v: Some(CellValue::Bool(true)),
+                },
+                CellOverride {
+                    sheet: 0,
+                    r: 5,
+                    c: 6,
+                    v: None,
+                },
+            ]
+        );
+
+        let request = parse_request(
+            r#"{"id":10,"op":"export","handle":"h1","format":"csv","out":"/tmp/x.csv"}"#,
+        )
+        .expect("request should parse");
+        let Request::Export { overrides, .. } = request else {
+            panic!("expected export request");
+        };
+        assert!(overrides.is_empty());
+    }
+
+    #[test]
+    fn export_overrides_reject_malformed_entries_naming_the_field() {
+        for (payload, expected) in [
+            (r#""overrides":{}"#, "overrides must be an array"),
+            (r#""overrides":[7]"#, "overrides[0] must be an object"),
+            (
+                r#""overrides":[{"r":0,"c":0,"v":1}]"#,
+                "overrides[0].sheet must be a u32",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":-1,"c":0,"v":1}]"#,
+                "overrides[0].r must be a u32",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":0,"c":4294967296,"v":1}]"#,
+                "overrides[0].c must be a u32",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":0,"c":0}]"#,
+                "overrides[0].v must be a number, string, boolean, or null",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":0,"c":0,"v":[1]}]"#,
+                "overrides[0].v must be a number, string, boolean, or null",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":0,"c":0,"v":{}}]"#,
+                "overrides[0].v must be a number, string, boolean, or null",
+            ),
+        ] {
+            let line = format!(
+                r#"{{"id":3,"op":"export","handle":"h1","format":"csv","out":"/tmp/x.csv",{payload}}}"#
+            );
+            let error = parse_request(&line).expect_err("request should fail");
+            assert_eq!(error.id, Some(3), "{payload}");
+            assert_eq!(error.msg, expected, "{payload}");
+        }
+
+        // Non-finite numbers cannot arrive over the wire at all: serde_json
+        // rejects out-of-range literals at the syntax level.
+        let error = parse_request(
+            r#"{"id":3,"op":"export","handle":"h1","format":"csv","out":"/tmp/x.csv",
+                "overrides":[{"sheet":0,"r":0,"c":0,"v":1e999}]}"#,
+        )
+        .expect_err("out-of-range number should fail");
+        assert_eq!(error.id, None);
+    }
+
+    #[test]
+    fn export_overrides_cap_is_named_in_the_error() {
+        let entries = (0..EXPORT_OVERRIDES_CAP + 1)
+            .map(|_| serde_json::json!({"sheet":0,"r":0,"c":0,"v":1}))
+            .collect::<Vec<_>>();
+        let error =
+            parse_overrides(&Value::Array(entries)).expect_err("over-cap overrides should fail");
+        assert_eq!(
+            error,
+            format!("overrides length {} exceeds the 100000-entry cap", 100_001)
+        );
+
+        let at_cap = (0..EXPORT_OVERRIDES_CAP)
+            .map(|_| serde_json::json!({"sheet":0,"r":0,"c":0,"v":1}))
+            .collect::<Vec<_>>();
+        assert!(parse_overrides(&Value::Array(at_cap)).is_ok());
+    }
+
+    #[test]
+    fn caps_are_advertised_on_version_and_open_responses_only() {
+        assert_eq!(server_caps(), vec!["exportOverrides".to_owned()]);
+        let version = serde_json::to_value(VersionResponse {
+            id: 1,
+            ok: true,
+            proto: PROTO_VERSION,
+            version: "0.2.0".to_owned(),
+            caps: server_caps(),
+        })
+        .expect("version response should serialize");
+        assert_eq!(version["caps"], serde_json::json!(["exportOverrides"]));
+        let open = serde_json::to_value(OpenResponse {
+            id: 2,
+            ok: true,
+            proto: PROTO_VERSION,
+            caps: server_caps(),
+            handle: "h1".to_owned(),
+            truncated: false,
+            sheets: Vec::new(),
+            warnings: Vec::new(),
+        })
+        .expect("open response should serialize");
+        assert_eq!(open["caps"], serde_json::json!(["exportOverrides"]));
     }
 
     #[test]
