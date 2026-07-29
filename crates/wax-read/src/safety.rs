@@ -531,11 +531,12 @@ fn walk_biff_substream(
             0x0207 => 2,          // String (formula result): cch (BIFF5 has no grbit)
             0x0200 => 10,         // Dimensions (also structurally checked)
             0x0017 => 2,          // ExternSheet: cxti (XTI array may be continued)
-            // Lbl (DEFINEDNAME): calamine's parse_lbl reads data[3] then
-            // read_u16(&data[4..]) with no length check, so a short record
-            // is an index-out-of-bounds panic — one that fires in release
-            // too, unlike the arithmetic-overflow family.
-            0x0018 => 6,
+            // Lbl (DEFINEDNAME): calamine's parse_lbl reads data[3],
+            // read_u16(&data[4..]), and slices data[14..] with no length
+            // check, then indexes data[data.len() - cce]. Structurally
+            // checked below as well. This class panics in release too,
+            // unlike the arithmetic-overflow family.
+            0x0018 => 14,
             0x00E5 => 2,          // MergeCells: cmcs
             // Records whose calamine *match guards* read a u16 before the
             // arm body runs, so a short payload panics before any check.
@@ -564,6 +565,21 @@ fn walk_biff_substream(
                 }
             }
             0x0200 => check_declared_extent(data, options.max_declared_cells)?,
+            // Lbl: calamine takes the formula tail as `data[data.len() - cce..]`,
+            // so a declared `cce` larger than the record underflows the
+            // subtraction before the slice is even built.
+            0x0018 => {
+                let cce = usize::from(u16::from_le_bytes([data[4], data[5]]));
+                if cce > data.len() {
+                    return Err(SafetyError::new(
+                        ErrorCode::BadZip,
+                        format!(
+                            "BIFF Lbl record declares a {cce} byte formula inside a {} byte record",
+                            data.len()
+                        ),
+                    ));
+                }
+            }
             // Cell-bearing records. calamine collects these into a Vec and
             // hands it to `Range::from_sparse`, which densifies the *observed*
             // span — no DIMENSIONS record required. A file holding two cells

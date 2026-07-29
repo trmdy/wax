@@ -136,14 +136,51 @@ either could over-reject:
 | After cell-reference rail (element-scoped) | 96.04% (1963/2044) | 0 |
 | After broadened any-`ref` rail — **rejected** | 95.35% (1949/2044) | **14** |
 | After re-scoped rail (shipped) | 96.04% (1963/2044) | 0 |
+| After `Lbl` minimum-length rail | 96.04% (1963/2044) | 0 |
 
-Four full 2,044-file runs. The third is why the broad rail is not in the
-tree: corpus fit caught it, not review.
+Five full 2,044-file runs. The rejected row is why the broad rail is not
+in the tree: corpus fit caught it, not review.
 
-## 4. Burn-in result
+## 4. Burn-in: five rounds, four distinct outcomes
 
-Round 2 (all three targets, 1800 s each, with both fixes in): see the
-seal for final per-target statistics.
+Extended burns were run repeatedly because each round changed the tree.
+What they produced, in order:
+
+1. **`container_preflight` — clean, four times over** (1800 s each;
+   representative round: 35,481,433 executions, 19,700 exec/s, 16,404 new
+   units, 1,093 MB peak). No findings at any point.
+2. **`xlsx_reader` — calamine reference-arithmetic family (open).** Two
+   distinct sites in the same upstream code: the column accumulator
+   overflow (§2) and `get_dimension`'s unordered
+   `parts[1].0 - parts[0].0`, which underflows on a reversed range
+   (`B9:A1`). Both panic only under overflow-checked builds and are inert
+   in release — measured across two artifacts and three crafted
+   workbooks. Consolidated into one declared finding in
+   `fuzz/known-findings/`; chasing further individual operations at the
+   XML layer was rejected as whack-a-mole with real corpus cost.
+3. **A false OOM that would have become a fabricated finding.** Round 3
+   reported `libFuzzer: out-of-memory (used: 2051Mb; limit: 2048Mb)` on
+   `xlsx_reader` — but the artifact was **zero bytes** (`da39a3ee…` is the
+   SHA-1 of the empty input) and the stack held only `fuzzer::Fuzzer::Loop`
+   and libFuzzer's own `SizedFile` vector, with no wax or calamine frames.
+   `-rss_limit_mb` caps *total process* RSS, which after ~10k discovered
+   units includes the fuzzer's in-memory corpus. Fixed in `check.sh`:
+   raise the process ceiling and set `-malloc_limit_mb` explicitly so
+   single hostile allocations — the class that caught the 137 GB extent
+   bomb — still report. **This was invisible at the 300 s CI burn length
+   and only appeared at 1800 s.**
+4. **`legacy_xls_reader` — calamine `parse_lbl` out-of-bounds (fixed).**
+   `index out of bounds: the len is 0 but the index is 3` at
+   `xls.rs:791`: `parse_lbl` reads `data[3]` and `read_u16(&data[4..])`
+   with no length check. **This class panics in release too**, unlike the
+   arithmetic family — wax contained it as a structured `internal` error
+   in 1.5 ms, but `internal` means "wax bug" by our own contract and W5B
+   had just driven that category to zero. Fixed properly: `Lbl` (0x0018)
+   joins the preflight's minimum-record-length table (6 bytes), which
+   exists for exactly this class. The input now returns a deterministic
+   `bad_zip` naming the record, and is a committed regression seed.
+
+Final per-target statistics are in the seal.
 
 ## Findings against my own work
 

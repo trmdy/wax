@@ -1,6 +1,6 @@
 # wax mismatch triage
 
-Generated: `2026-07-29T23:05:36Z`
+Generated: `2026-07-29T23:08:52Z`
 
 Files compared: 2044.
 
@@ -10,8 +10,8 @@ Counts include private corpus files; example paths deliberately omit them.
 
 | Category | Occurrences | Example files |
 | --- | ---: | --- |
-| <code>bad_zip</code> | 65 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/null_file.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/58616.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/60825.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/61045_govdocs1_626534.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/61300.xls</code> |
-| <code>bomb</code> | 16 | <code>corpus/files/poi/test-data/spreadsheet/35897-type4.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/50833.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51535.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51832.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/54764-2.xlsx</code> |
+| <code>bad_zip</code> | 66 | <code>corpus/files/openpyxl/3.1.5/openpyxl/reader/tests/data/null_file.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/58616.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/60284.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/60825.xlsx</code>, <code>corpus/files/poi/test-data/spreadsheet/61045_govdocs1_626534.xls</code> |
+| <code>bomb</code> | 15 | <code>corpus/files/poi/test-data/spreadsheet/35897-type4.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/50833.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51535.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/51832.xls</code>, <code>corpus/files/poi/test-data/spreadsheet/54764-2.xlsx</code> |
 
 ## Value mismatches by type pair
 
