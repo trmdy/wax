@@ -283,16 +283,16 @@
       "id": "w5a",
       "slug": "fuzz",
       "title": "Fuzz burn-in (3x1800s) + calamine unbounded-FAT containment fix + corpus-fit",
-      "branch": "agent/wax-w5a-fuzz",
+      "branch": "agent/wax-w5a-fuzz-coord",
       "worktree": ".worktrees/w5a",
-      "bee": "wax-w5a",
-      "state": "working",
+      "bee": "coordinator (CL.7c63) \u2014 takeover after model refusal",
+      "state": "merged",
       "owns": [
         "fuzz/**",
         "crates/wax-read/src/safety.rs (+ lib.rs hooks)"
       ],
       "brief": "docs/briefs/w5a.md",
-      "beeId": "CO.eda"
+      "beeId": "CL.7c63"
     },
     {
       "id": "w5b",
