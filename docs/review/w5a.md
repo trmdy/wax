@@ -86,14 +86,43 @@ not a shipped-binary memory hazard — but the fuzz gate must be clean and
 a wrapped index must never reach the reader.
 
 **Fix:** `check_cell_reference_attributes` in the XML preflight rejects
-references with more than three column letters, scoped exactly to the
-attributes calamine feeds that parser — `@r` on `<c>`/`<row>`, `@ref` on
-`<dimension>`/`<mergeCell>`. Excel's last column is `XFD`, so >3 letters
-cannot name a real column. The narrow scoping is deliberate: a blanket
-"letters followed by a digit" check would reject `<sheet name="Sheet1">`.
+references with more than three column letters, scoped to the attributes
+calamine feeds that parser — `@r` on `<c>`/`<row>`, `@ref` on
+`<dimension>`/`<mergeCell>`/`<autoFilter>`/`<hyperlink>` — matched by
+**local** name. Excel's last column is `XFD`, so >3 letters cannot name a
+real column. Both scoping decisions were forced by evidence:
 
-Verified: crash artifact and a crafted overflow file both rejected
-structurally; a legitimate `A1:XFD1048576` dimension still opens.
+- Matching *qualified* names (the first attempt) let a namespace-prefixed
+  `<x:dimension>` walk straight past the rail while calamine, which
+  matches local names, still parsed it. Round 2 of the burn found exactly
+  that.
+- Matching *any* `r`/`ref` attribute regardless of element (the second
+  attempt) cost **14 corpus opens**: it also matches XSD
+  `<xs:element ref="EG_ExtensionList">` and `dc:creator` in the
+  custom-XML and schema parts real workbooks carry. Reverted.
+- `xmlns:r="…"` has local name `r` and had to be excluded explicitly.
+
+Verified: a crafted overflow file is rejected structurally and a
+legitimate `A1:XFD1048576` dimension still opens.
+
+### Residual — declared open, not silently passed
+
+Round 3's artifact is **not** closed by this rail, and the reason is worth
+more than the crash: its sheet part is invisible to preflight. The `zip`
+crate cannot enumerate that member (Python's `zipfile` also refuses it:
+`Bad magic number for file header`) while calamine's own zip reader parses
+it happily — so preflight validated a different set of parts than the
+reader consumed. **This applies to every XML rail wax has**, not just this
+one. No XML-layer fix can close it; it needs either an upstream
+`checked_mul` guard in calamine or a container-level check that two zip
+readers agree on the entry set.
+
+Release-mode impact was measured, not assumed: the artifact returns a
+structured `bad_zip` in ~2 ms at ~3 MB, and a wrapped column index that
+does reach the reader is inert because calamine reads xlsx cells rather
+than trusting the dimension (opens at 1.8 MB, no growth). The finding is
+quarantined in `fuzz/known-findings/xlsx_reader/` with full evidence and
+ranked fix options, and it is declared in the W5 seal as a gate deviation.
 
 ## 3. Corpus fit (mandatory, twice)
 
@@ -104,7 +133,12 @@ either could over-reject:
 | --- | ---: | ---: |
 | Baseline (post-W5B merge) | 96.04% (1963/2044) | — |
 | After observed-extent rail | 96.04% (1963/2044) | 0 |
-| After cell-reference rail | 96.04% (1963/2044) | 0 |
+| After cell-reference rail (element-scoped) | 96.04% (1963/2044) | 0 |
+| After broadened any-`ref` rail — **rejected** | 95.35% (1949/2044) | **14** |
+| After re-scoped rail (shipped) | 96.04% (1963/2044) | 0 |
+
+Four full 2,044-file runs. The third is why the broad rail is not in the
+tree: corpus fit caught it, not review.
 
 ## 4. Burn-in result
 
