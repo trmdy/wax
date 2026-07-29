@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "generatedAt": "2026-07-28T19:10:33Z",
+  "generatedAt": "2026-07-29T19:32:00Z",
   "filesAttempted": 2044,
   "filesSkipped": 0,
   "metrics": {
     "filesOpened": {
       "wax": {
-        "matched": 1956,
+        "matched": 1963,
         "total": 2044,
-        "percent": 95.69471624266144
+        "percent": 96.0371819960861
       },
       "sheetjs": {
         "matched": 1986,
@@ -17,15 +17,15 @@
       }
     },
     "cellValueMatch": {
-      "matched": 2679994,
-      "total": 2903176,
-      "percent": 92.3124881164628
+      "matched": 2713263,
+      "total": 2913841,
+      "percent": 93.11637114036078
     },
     "displayStringCoverage": {
       "wax": {
-        "matched": 2874035,
-        "total": 2874810,
-        "percent": 99.97304169666864
+        "matched": 2906774,
+        "total": 2907549,
+        "percent": 99.97334524714803
       },
       "sheetjs": {
         "matched": 2916766,
@@ -34,38 +34,38 @@
       }
     },
     "displayStringMatch": {
-      "matched": 2789517,
-      "total": 2873176,
-      "percent": 97.08827443915723
+      "matched": 2833244,
+      "total": 2905914,
+      "percent": 97.49923776133774
     },
     "formulaFidelity": {
-      "matched": 82149,
-      "total": 451733,
-      "percent": 18.185299723509242
+      "matched": 82686,
+      "total": 454931,
+      "percent": 18.175503537899154
     },
     "cachedResultFidelity": {
-      "matched": 241796,
-      "total": 451733,
-      "percent": 53.52630868234112
+      "matched": 267326,
+      "total": 454931,
+      "percent": 58.76187817493202
     },
     "parseTimeMs": {
       "wax": {
         "p50": 1,
-        "p95": 10
+        "p95": 9
       },
       "sheetjs": {
-        "p50": 11,
-        "p95": 85
+        "p50": 8,
+        "p95": 38
       }
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 3276800,
-        "max": 707575808
+        "p50": 3424256,
+        "max": 707821568
       },
       "sheetjs": {
-        "p50": 100646912,
-        "max": 1217249280
+        "p50": 100777984,
+        "max": 1218002944
       }
     },
     "windowLatencyMs": {
@@ -73,17 +73,17 @@
       "sheetjs": null
     },
     "openViaServe": {
-      "matched": 1956,
+      "matched": 1963,
       "total": 2044,
-      "percent": 95.69471624266144
+      "percent": 96.0371819960861
     },
     "windowLatencyPercentilesMs": {
-      "p50": 6.561624999999999,
-      "p95": 10.633875
+      "p50": 6.330875,
+      "p95": 7.835
     },
     "servePeakRssBytes": {
-      "p50": 3489792,
-      "max": 795197440
+      "p50": 3637248,
+      "max": 793133056
     },
     "serveStatus": {
       "status": "available",
@@ -135,9 +135,9 @@
           }
         },
         "cellValueMatch": {
-          "matched": 1347466,
+          "matched": 1363106,
           "total": 1373455,
-          "percent": 98.10776472472706
+          "percent": 99.24649879318943
         },
         "formulaFidelity": {
           "matched": 7496,
@@ -145,18 +145,18 @@
           "percent": 5.868950776289314
         },
         "cachedResultFidelity": {
-          "matched": 109994,
+          "matched": 125498,
           "total": 127723,
-          "percent": 86.11917978750891
+          "percent": 98.2579488424168
         }
       },
       "xlsb": {
         "filesAttempted": 456,
         "filesOpened": {
           "wax": {
-            "matched": 447,
+            "matched": 453,
             "total": 456,
-            "percent": 98.02631578947368
+            "percent": 99.34210526315789
           },
           "sheetjs": {
             "matched": 453,
@@ -165,19 +165,19 @@
           }
         },
         "cellValueMatch": {
-          "matched": 564164,
-          "total": 755203,
-          "percent": 74.70362273454951
+          "matched": 581793,
+          "total": 765868,
+          "percent": 75.96517937816961
         },
         "formulaFidelity": {
-          "matched": 1935,
-          "total": 250514,
-          "percent": 0.7724119210902385
+          "matched": 2472,
+          "total": 253712,
+          "percent": 0.9743331021000189
         },
         "cachedResultFidelity": {
-          "matched": 59878,
-          "total": 250514,
-          "percent": 23.90205737004718
+          "matched": 69904,
+          "total": 253712,
+          "percent": 27.552500472977233
         }
       },
       "xlsm": {
@@ -214,9 +214,9 @@
         "filesAttempted": 634,
         "filesOpened": {
           "wax": {
-            "matched": 595,
+            "matched": 596,
             "total": 634,
-            "percent": 93.84858044164038
+            "percent": 94.00630914826499
           },
           "sheetjs": {
             "matched": 609,
@@ -243,36 +243,36 @@
     },
     "roundTrip": {
       "filesClean": {
-        "matched": 1846,
-        "total": 1952,
-        "percent": 94.56967213114754
+        "matched": 1834,
+        "total": 1959,
+        "percent": 93.61919346605411
       },
       "valueMatch": {
-        "matched": 2065753,
-        "total": 2074802,
-        "percent": 99.56386199743397
+        "matched": 2075379,
+        "total": 2107549,
+        "percent": 98.47358234612813
       },
       "displayMatch": {
-        "matched": 2073315,
-        "total": 2074802,
-        "percent": 99.92833051057401
+        "matched": 2084877,
+        "total": 2107549,
+        "percent": 98.92424802460108
       },
       "oracleOpenRate": {
-        "matched": 1949,
-        "total": 1949,
+        "matched": 1958,
+        "total": 1958,
         "percent": 100.0
       },
       "sofficeOpenRate": {
-        "matched": 185,
-        "total": 185,
-        "percent": 100.0
+        "matched": 0,
+        "total": 0,
+        "percent": null
       },
       "skippedTruncated": 4,
       "status": {
         "status": "available",
         "reason": null,
-        "sofficeStatus": "available",
-        "sofficeReason": null
+        "sofficeStatus": "disabled",
+        "sofficeReason": "soffice disabled"
       }
     }
   }
