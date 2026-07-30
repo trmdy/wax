@@ -26,19 +26,23 @@ use std::collections::HashMap;
 use std::fmt;
 use std::mem::size_of;
 
-use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo, Document, Sheet};
+use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo, Document, RowInfo, Sheet};
 
 const MISSING_STRING: u32 = u32::MAX;
 /// Sentinel in the per-cell style column for "no explicit style".
 const MISSING_STYLE: u32 = u32::MAX;
 
-/// Per-sheet metadata as reported by `open`/`meta`.
+/// Per-sheet metadata as reported by `open`/`meta`. The size defaults are
+/// the container-declared values (`None` when the file does not declare
+/// one); the serve layer resolves the Excel fallbacks on the wire.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SheetMeta {
     pub name: String,
     pub rows: u32,
     pub cols: u32,
     pub truncated: bool,
+    pub default_row_height: Option<f64>,
+    pub default_col_width: Option<f64>,
 }
 
 /// One cell inside a window. Same field semantics as the normalized dump
@@ -310,6 +314,9 @@ struct StoredSheet {
     truncated: bool,
     merges: Vec<StoredMerge>,
     col_infos: Vec<ColInfo>,
+    row_infos: Vec<RowInfo>,
+    default_row_height: Option<f64>,
+    default_col_width: Option<f64>,
     row_index: Vec<StoredRow>,
     columns: StoredColumns,
 }
@@ -318,6 +325,7 @@ impl StoredSheet {
     fn approx_bytes(&self) -> usize {
         allocation_bytes(&self.merges)
             .saturating_add(allocation_bytes(&self.col_infos))
+            .saturating_add(allocation_bytes(&self.row_infos))
             .saturating_add(allocation_bytes(&self.row_index))
             .saturating_add(self.columns.approx_bytes())
     }
@@ -368,9 +376,17 @@ impl WorkbookStoreBuilder {
             rows: sheet.rows,
             cols: sheet.cols,
             truncated: sheet.truncated,
+            default_row_height: sheet.default_row_height,
+            default_col_width: sheet.default_col_width,
         };
-        self.add_ordered_sheet(meta, sheet.merges, sheet.col_infos, sheet.cells)
-            .expect("the stable row-major sort must produce ordered cells");
+        self.add_ordered_sheet(
+            meta,
+            sheet.merges,
+            sheet.col_infos,
+            sheet.row_infos,
+            sheet.cells,
+        )
+        .expect("the stable row-major sort must produce ordered cells");
     }
 
     /// Set the workbook-wide style table referenced by cell `s` indexes.
@@ -388,6 +404,7 @@ impl WorkbookStoreBuilder {
         meta: SheetMeta,
         merges: Vec<String>,
         col_infos: Vec<ColInfo>,
+        row_infos: Vec<RowInfo>,
         cells: I,
     ) -> Result<(), CellOrderError>
     where
@@ -438,6 +455,8 @@ impl WorkbookStoreBuilder {
         columns.shrink_to_fit();
         let mut col_infos = col_infos;
         col_infos.shrink_to_fit();
+        let mut row_infos = row_infos;
+        row_infos.shrink_to_fit();
         self.sheets.push(StoredSheet {
             name,
             rows: meta.rows,
@@ -445,6 +464,9 @@ impl WorkbookStoreBuilder {
             truncated: meta.truncated,
             merges: stored_merges,
             col_infos,
+            row_infos,
+            default_row_height: meta.default_row_height,
+            default_col_width: meta.default_col_width,
             row_index,
             columns,
         });
@@ -490,6 +512,11 @@ impl WorkbookStore {
     /// Explicit column widths for one sheet; `None` for an unknown sheet.
     pub fn sheet_col_infos(&self, sheet: u32) -> Option<&[ColInfo]> {
         Some(&self.sheets.get(usize::try_from(sheet).ok()?)?.col_infos)
+    }
+
+    /// Declared row heights for one sheet; `None` for an unknown sheet.
+    pub fn sheet_row_infos(&self, sheet: u32) -> Option<&[RowInfo]> {
+        Some(&self.sheets.get(usize::try_from(sheet).ok()?)?.row_infos)
     }
 
     /// Every merge range of one sheet as full A1 ranges (unclipped);
@@ -543,6 +570,8 @@ impl WorkbookStore {
             rows: stored.rows,
             cols: stored.cols,
             truncated: stored.truncated,
+            default_row_height: stored.default_row_height,
+            default_col_width: stored.default_col_width,
         })
     }
 
@@ -707,6 +736,9 @@ mod tests {
             "test.xlsx",
             vec![Sheet {
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows,
@@ -738,6 +770,9 @@ mod tests {
         }];
         document.sheets[0].cells[0].s = Some(0);
         document.sheets[0].col_infos = vec![ColInfo { c: 1, width: 24.5 }];
+        document.sheets[0].row_infos = vec![RowInfo { r: 1, height: 30.0 }];
+        document.sheets[0].default_row_height = Some(14.4);
+        document.sheets[0].default_col_width = Some(9.14);
 
         let store = WorkbookStore::from_document(document);
 
@@ -748,6 +783,14 @@ mod tests {
             Some(&[ColInfo { c: 1, width: 24.5 }][..])
         );
         assert_eq!(store.sheet_col_infos(9), None);
+        assert_eq!(
+            store.sheet_row_infos(0),
+            Some(&[RowInfo { r: 1, height: 30.0 }][..])
+        );
+        assert_eq!(store.sheet_row_infos(9), None);
+        let meta = store.sheet_meta(0).unwrap();
+        assert_eq!(meta.default_row_height, Some(14.4));
+        assert_eq!(meta.default_col_width, Some(9.14));
         assert_eq!(store.sheet_merges(0), Some(vec!["A1:B1".to_owned()]));
         assert_eq!(store.sheet_merges(9), None);
 
@@ -878,6 +921,9 @@ mod tests {
         let sheets = (0..2)
             .map(|index| Sheet {
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
                 name: format!("Sheet{index}"),
                 index,
                 rows: 1,
@@ -933,6 +979,9 @@ mod tests {
             vec![
                 Sheet {
                     col_infos: Vec::new(),
+                    row_infos: Vec::new(),
+                    default_row_height: None,
+                    default_col_width: None,
                     name: "First".to_owned(),
                     index: 0,
                     rows: 4,
@@ -947,6 +996,9 @@ mod tests {
                 },
                 Sheet {
                     col_infos: Vec::new(),
+                    row_infos: Vec::new(),
+                    default_row_height: None,
+                    default_col_width: None,
                     name: "Second".to_owned(),
                     index: 1,
                     rows: 1,
@@ -995,7 +1047,10 @@ mod tests {
                     rows: 2,
                     cols: 2,
                     truncated: false,
+                    default_row_height: None,
+                    default_col_width: None,
                 },
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 [number_cell(1, 0, 1.0), number_cell(0, 1, 2.0)],
@@ -1139,7 +1194,10 @@ mod tests {
                     rows: cell_count,
                     cols: 1,
                     truncated: false,
+                    default_row_height: None,
+                    default_col_width: None,
                 },
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 cells,
@@ -1187,7 +1245,10 @@ mod tests {
                     rows: ROWS,
                     cols: COLS,
                     truncated: false,
+                    default_row_height: None,
+                    default_col_width: None,
                 },
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 cells,

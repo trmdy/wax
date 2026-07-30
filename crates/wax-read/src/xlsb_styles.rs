@@ -9,12 +9,14 @@ use zip::ZipWriter;
 
 use super::{
     builtin_format, explicit_format, parse_relationships, read_part, read_part_optional,
-    relationships_path, resolve_part, zip_lookup, zip_part_key,
+    relationships_path, resolve_part, zip_lookup, zip_part_key, ColumnDeclaration, RowDeclaration,
+    SheetDefaults, SheetSizes,
 };
 
 #[derive(Default)]
 pub(super) struct XlsbStyleSupplement {
     sheets: HashMap<String, HashMap<(u32, u32), XlsbCellMetadata>>,
+    sizes: HashMap<String, SheetSizes>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -61,6 +63,7 @@ impl XlsbStyleSupplement {
         };
 
         let mut sheets = HashMap::new();
+        let mut sizes = HashMap::new();
         for sheet in parse_workbook_sheets(&workbook)? {
             let Some(target) = by_id.get(sheet.relationship_id.as_str()) else {
                 continue;
@@ -69,9 +72,11 @@ impl XlsbStyleSupplement {
             let Some(bytes) = read_part_optional(&mut archive, &lookup, &sheet_path)? else {
                 continue;
             };
-            sheets.insert(sheet.name, parse_sheet_styles(&bytes, &formats)?);
+            let (cells, sheet_sizes) = parse_sheet_styles(&bytes, &formats)?;
+            sheets.insert(sheet.name.clone(), cells);
+            sizes.insert(sheet.name, sheet_sizes);
         }
-        Ok(Self { sheets })
+        Ok(Self { sheets, sizes })
     }
 
     pub(super) fn cell(&self, sheet: &str, position: (u32, u32)) -> Option<&str> {
@@ -80,6 +85,10 @@ impl XlsbStyleSupplement {
 
     pub(super) fn cells(&self, sheet: &str) -> Option<&HashMap<(u32, u32), XlsbCellMetadata>> {
         self.sheets.get(sheet)
+    }
+
+    pub(super) fn sizes(&self, sheet: &str) -> Option<&SheetSizes> {
+        self.sizes.get(sheet)
     }
 }
 
@@ -232,17 +241,68 @@ fn parse_styles(bytes: &[u8]) -> Result<Vec<Option<String>>, String> {
     Ok(formats)
 }
 
-fn parse_sheet_styles(
-    bytes: &[u8],
-    formats: &[Option<String>],
-) -> Result<HashMap<(u32, u32), XlsbCellMetadata>, String> {
+type ParsedXlsbSheet = (HashMap<(u32, u32), XlsbCellMetadata>, SheetSizes);
+
+fn parse_sheet_styles(bytes: &[u8], formats: &[Option<String>]) -> Result<ParsedXlsbSheet, String> {
     let mut styles = HashMap::new();
     let mut row = 0_u32;
+    // Raw BrtRowHdr heights as (row, twips, fUnsynced); filtered against the
+    // sheet default once the whole part is scanned.
+    let mut raw_rows = Vec::<(u32, u16, bool)>::new();
+    let mut columns = Vec::<ColumnDeclaration>::new();
+    let mut defaults = SheetDefaults::default();
+    let mut default_row_twips = None::<u16>;
     for record in BinaryRecordIter::new(bytes) {
         let record = record?;
         match record.kind {
+            // BrtRowHdr ([MS-XLSB] 2.4.757): rw(4), ixfe(4), miyRw(2, twips),
+            // then a flag block whose byte 11 carries fUnsynced (0x20).
             0x0000 if record.data.len() >= 4 => {
                 row = u32::from_le_bytes(record.data[..4].try_into().expect("four bytes checked"));
+                if record.data.len() >= 10 {
+                    let twips = u16::from_le_bytes([record.data[8], record.data[9]]) & 0x7FFF;
+                    let unsynced = record.data.get(11).is_some_and(|flags| flags & 0x20 != 0);
+                    raw_rows.push((row, twips, unsynced));
+                }
+            }
+            // BrtWsFmtInfo ([MS-XLSB] 2.4.845): dxGCol(4, 1/256 char, or
+            // 0xFFFFFFFF meaning "use cchDefColWidth"), cchDefColWidth(2),
+            // miyDefRwHeight(2, twips).
+            0x01E5 if record.data.len() >= 8 => {
+                let dx_g_col =
+                    u32::from_le_bytes(record.data[..4].try_into().expect("four bytes checked"));
+                let cch = u16::from_le_bytes([record.data[4], record.data[5]]);
+                let twips = u16::from_le_bytes([record.data[6], record.data[7]]);
+                defaults.col_width = if dx_g_col != u32::MAX {
+                    Some(f64::from(dx_g_col) / 256.0)
+                } else if cch > 0 {
+                    Some(f64::from(cch) + 5.0 / 7.0)
+                } else {
+                    None
+                };
+                if twips > 0 {
+                    default_row_twips = Some(twips);
+                    defaults.row_height = Some(f64::from(twips) / 20.0);
+                }
+            }
+            // BrtColInfo ([MS-XLSB] 2.4.323): colFirst(4), colLast(4),
+            // coldx(4, 1/256 char), ixfe(4), flags(2) with fUserSet (0x02) —
+            // the customWidth equivalent that the colInfos contract requires.
+            0x003C if record.data.len() >= 18 => {
+                let first =
+                    u32::from_le_bytes(record.data[..4].try_into().expect("four bytes checked"));
+                let last =
+                    u32::from_le_bytes(record.data[4..8].try_into().expect("four bytes checked"));
+                let coldx =
+                    u32::from_le_bytes(record.data[8..12].try_into().expect("four bytes checked"));
+                let user_set = record.data[16] & 0x02 != 0;
+                if user_set && last >= first {
+                    columns.push(ColumnDeclaration {
+                        min: first.saturating_add(1),
+                        max: last.saturating_add(1),
+                        width: f64::from(coldx) / 256.0,
+                    });
+                }
             }
             0x0001..=0x000B if record.data.len() >= 8 => {
                 let col =
@@ -269,7 +329,28 @@ fn parse_sheet_styles(
             _ => {}
         }
     }
-    Ok(styles)
+
+    // Same declaration rule as the legacy xls path: manually sized rows
+    // always count; otherwise a row's recorded height is a declaration only
+    // when it differs from the sheet's declared default.
+    let rows = raw_rows
+        .into_iter()
+        .filter(|(_, twips, unsynced)| {
+            *unsynced || default_row_twips.is_some_and(|default| *twips != default)
+        })
+        .map(|(row, twips, _)| RowDeclaration {
+            row,
+            height: f64::from(twips) / 20.0,
+        })
+        .collect();
+    Ok((
+        styles,
+        SheetSizes {
+            rows,
+            columns,
+            defaults,
+        },
+    ))
 }
 
 fn parse_nullable_wide_string(bytes: &[u8]) -> Result<Option<(String, usize)>, String> {
@@ -429,7 +510,7 @@ mod tests {
         cell.extend_from_slice(&[1, 0, 0, 0]);
         cell.extend_from_slice(&42.5_f64.to_le_bytes());
         push_record(&mut sheet, 0x0005, &cell);
-        let cells = parse_sheet_styles(&sheet, &formats).unwrap();
+        let (cells, _) = parse_sheet_styles(&sheet, &formats).unwrap();
         assert_eq!(
             cells.get(&(4, 2)),
             Some(&XlsbCellMetadata {
@@ -450,7 +531,7 @@ mod tests {
         formula_error.extend_from_slice(&[0, 0]);
         push_record(&mut sheet, 0x000B, &formula_error);
 
-        let cells = parse_sheet_styles(&sheet, &[]).unwrap();
+        let (cells, _) = parse_sheet_styles(&sheet, &[]).unwrap();
         assert_eq!(
             cells.get(&(6, 2)),
             Some(&XlsbCellMetadata {
@@ -470,7 +551,7 @@ mod tests {
         formula_string.extend_from_slice(&0_u32.to_le_bytes());
         push_record(&mut sheet, 0x0008, &formula_string);
 
-        let cells = parse_sheet_styles(&sheet, &[]).unwrap();
+        let (cells, _) = parse_sheet_styles(&sheet, &[]).unwrap();
         assert_eq!(
             cells.get(&(6, 2)),
             Some(&XlsbCellMetadata {

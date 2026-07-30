@@ -2,18 +2,26 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use wax_core::{CellOverride, CellType, CellValue, EXPORT_OVERRIDES_CAP};
+use wax_core::{CellOverride, CellType, CellValue, ColInfo, RowInfo, EXPORT_OVERRIDES_CAP};
 
 pub const PROTO_VERSION: u32 = 0;
 
 /// Capability string advertising the v0.2 export-with-overrides operation.
 pub const CAP_EXPORT_OVERRIDES: &str = "exportOverrides";
 
+/// Capability string advertising the v0.3 sheet size info fields
+/// (`colInfos`/`rowInfos`/`defaultRowHeight`/`defaultColWidth` on every
+/// `open`/`meta` sheet entry; contract pinned at apiary wave/sheet-p2.5).
+pub const CAP_SHEET_SIZE_INFOS: &str = "sheetSizeInfos";
+
 /// Every capability this server advertises on `version` and `open`
 /// responses. Additive — absence of `caps` means no capabilities; the
 /// `--version` line never carries capabilities (release-workflow contract).
 pub fn server_caps() -> Vec<String> {
-    vec![CAP_EXPORT_OVERRIDES.to_owned()]
+    vec![
+        CAP_EXPORT_OVERRIDES.to_owned(),
+        CAP_SHEET_SIZE_INFOS.to_owned(),
+    ]
 }
 pub const SERVE_DEFAULT_MAX_CELLS: u64 = 5_000_000;
 pub const SERVE_DEFAULT_MAX_BYTES: u64 = 100 * 1024 * 1024;
@@ -377,12 +385,25 @@ pub struct VersionResponse {
     pub caps: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+/// One `open`/`meta` sheet entry. Under the `sheetSizeInfos` capability all
+/// four size fields are always present: the arrays may be empty (no
+/// non-default entries) and the defaults are always concrete — container
+/// declarations when present, otherwise the Excel fallbacks (15.0 points /
+/// 8.43 character units), so consumers never need their own fallback.
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct SheetSummary {
     pub name: String,
     pub rows: u32,
     pub cols: u32,
     pub truncated: bool,
+    #[serde(rename = "colInfos")]
+    pub col_infos: Vec<ColInfo>,
+    #[serde(rename = "rowInfos")]
+    pub row_infos: Vec<RowInfo>,
+    #[serde(rename = "defaultRowHeight")]
+    pub default_row_height: f64,
+    #[serde(rename = "defaultColWidth")]
+    pub default_col_width: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -682,7 +703,10 @@ mod tests {
 
     #[test]
     fn caps_are_advertised_on_version_and_open_responses_only() {
-        assert_eq!(server_caps(), vec!["exportOverrides".to_owned()]);
+        assert_eq!(
+            server_caps(),
+            vec!["exportOverrides".to_owned(), "sheetSizeInfos".to_owned()]
+        );
         let version = serde_json::to_value(VersionResponse {
             id: 1,
             ok: true,
@@ -691,7 +715,10 @@ mod tests {
             caps: server_caps(),
         })
         .expect("version response should serialize");
-        assert_eq!(version["caps"], serde_json::json!(["exportOverrides"]));
+        assert_eq!(
+            version["caps"],
+            serde_json::json!(["exportOverrides", "sheetSizeInfos"])
+        );
         let open = serde_json::to_value(OpenResponse {
             id: 2,
             ok: true,
@@ -703,7 +730,57 @@ mod tests {
             warnings: Vec::new(),
         })
         .expect("open response should serialize");
-        assert_eq!(open["caps"], serde_json::json!(["exportOverrides"]));
+        assert_eq!(
+            open["caps"],
+            serde_json::json!(["exportOverrides", "sheetSizeInfos"])
+        );
+    }
+
+    #[test]
+    fn sheet_summaries_always_carry_all_four_size_fields() {
+        let summary = serde_json::to_value(SheetSummary {
+            name: "Costs".to_owned(),
+            rows: 3,
+            cols: 2,
+            truncated: false,
+            col_infos: vec![ColInfo { c: 1, width: 24.5 }],
+            row_infos: vec![RowInfo {
+                r: 0,
+                height: 27.75,
+            }],
+            default_row_height: 14.4,
+            default_col_width: 8.43,
+        })
+        .expect("summary should serialize");
+        assert_eq!(
+            summary,
+            serde_json::json!({
+                "name": "Costs",
+                "rows": 3,
+                "cols": 2,
+                "truncated": false,
+                "colInfos": [{"c": 1, "width": 24.5}],
+                "rowInfos": [{"r": 0, "height": 27.75}],
+                "defaultRowHeight": 14.4,
+                "defaultColWidth": 8.43,
+            })
+        );
+
+        // Empty arrays stay present — the sheetSizeInfos contract has no
+        // absent-field ambiguity.
+        let bare = serde_json::to_value(SheetSummary {
+            name: "Empty".to_owned(),
+            rows: 0,
+            cols: 0,
+            truncated: false,
+            col_infos: Vec::new(),
+            row_infos: Vec::new(),
+            default_row_height: 15.0,
+            default_col_width: 8.43,
+        })
+        .expect("summary should serialize");
+        assert_eq!(bare["colInfos"], serde_json::json!([]));
+        assert_eq!(bare["rowInfos"], serde_json::json!([]));
     }
 
     #[test]

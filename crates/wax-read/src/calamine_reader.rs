@@ -11,7 +11,9 @@ use calamine::{
 };
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader as XmlReader;
-use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo, Document, DumpError, Sheet};
+use wax_core::{
+    Cell, CellStyle, CellType, CellValue, ColInfo, Document, DumpError, RowInfo, Sheet,
+};
 use wax_fmt::{render, FmtValue};
 use wax_proto::ErrorCode;
 use zip::write::SimpleFileOptions;
@@ -243,6 +245,10 @@ fn read_xlsx_workbook<RS: Read + Seek>(
             max_cells,
         );
         sheet.col_infos = supplement.col_infos(&metadata.name, cols);
+        sheet.row_infos = supplement.row_infos(&metadata.name, rows);
+        let defaults = supplement.sheet_defaults(&metadata.name);
+        sheet.default_row_height = defaults.row_height;
+        sheet.default_col_width = defaults.col_width;
         sheets.push(sheet);
     }
     let styles = compact_styles(&mut sheets, &styles);
@@ -391,7 +397,7 @@ fn read_xlsb_workbook<RS: Read + Seek>(
 
         let candidates = normalize_candidates(records, epoch_1904);
         let (rows, cols) = extent_from_cells(&candidates);
-        sheets.push(finish_sheet(
+        let mut sheet = finish_sheet(
             SheetDraft {
                 name: &metadata.name,
                 index,
@@ -402,7 +408,14 @@ fn read_xlsb_workbook<RS: Read + Seek>(
             },
             &mut emitted,
             max_cells,
-        ));
+        );
+        if let Some(sizes) = supplement.sizes(&metadata.name) {
+            sheet.row_infos = row_infos_within_extent(&sizes.rows, rows);
+            sheet.col_infos = col_infos_within_extent(&sizes.columns, cols);
+            sheet.default_row_height = sizes.defaults.row_height;
+            sheet.default_col_width = sizes.defaults.col_width;
+        }
+        sheets.push(sheet);
     }
 
     warnings.push("xlsb merged regions are best-effort".to_owned());
@@ -457,7 +470,7 @@ fn read_xls(
         let merges = workbook
             .merge_cells_by_sheet_name(&metadata.name)
             .map_err(|error| container_error(WorkbookKind::Xls, error))?;
-        sheets.push(finish_sheet(
+        let mut sheet = finish_sheet(
             SheetDraft {
                 name: &metadata.name,
                 index,
@@ -468,7 +481,14 @@ fn read_xls(
             },
             &mut emitted,
             max_cells,
-        ));
+        );
+        if let Some(sizes) = supplement.sizes(index) {
+            sheet.row_infos = row_infos_within_extent(&sizes.rows, rows);
+            sheet.col_infos = col_infos_within_extent(&sizes.columns, cols);
+            sheet.default_row_height = sizes.defaults.row_height;
+            sheet.default_col_width = sizes.defaults.col_width;
+        }
+        sheets.push(sheet);
     }
 
     Ok((sheets, warnings))
@@ -856,6 +876,9 @@ fn finish_sheet(draft: SheetDraft<'_>, emitted: &mut usize, max_cells: usize) ->
     merges.sort();
     Sheet {
         col_infos: Vec::new(),
+        row_infos: Vec::new(),
+        default_row_height: None,
+        default_col_width: None,
         name: name.to_owned(),
         index: index as u32,
         rows,
@@ -869,6 +892,9 @@ fn finish_sheet(draft: SheetDraft<'_>, emitted: &mut usize, max_cells: usize) ->
 fn empty_sheet(name: &str, index: usize) -> Sheet {
     Sheet {
         col_infos: Vec::new(),
+        row_infos: Vec::new(),
+        default_row_height: None,
+        default_col_width: None,
         name: name.to_owned(),
         index: index as u32,
         rows: 0,
@@ -1021,10 +1047,36 @@ struct ColumnDeclaration {
     width: f64,
 }
 
+/// One `<row>` element that declares its height. `row` is zero-based.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct RowDeclaration {
+    row: u32,
+    height: f64,
+}
+
+/// Sheet defaults declared by `<sheetFormatPr>`; `None` when the container
+/// does not declare one (consumers fall back to the Excel defaults).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct SheetDefaults {
+    row_height: Option<f64>,
+    col_width: Option<f64>,
+}
+
+/// Declared row heights, column widths, and sheet defaults recovered from a
+/// legacy container's own records (BIFF/BrtRecord supplements).
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SheetSizes {
+    rows: Vec<RowDeclaration>,
+    columns: Vec<ColumnDeclaration>,
+    defaults: SheetDefaults,
+}
+
 #[derive(Default)]
 struct OoxmlSheetSupplement {
     cells: HashMap<(u32, u32), CellMetadata>,
     columns: Vec<ColumnDeclaration>,
+    rows: Vec<RowDeclaration>,
+    defaults: SheetDefaults,
 }
 
 #[derive(Default)]
@@ -1100,9 +1152,15 @@ impl OoxmlSupplement {
                         "xlsx column widths for sheet {:?} could not be read: {message}",
                         workbook_sheet.name
                     ));
+                    warnings.push(format!(
+                        "xlsx row heights for sheet {:?} could not be read: {message}",
+                        workbook_sheet.name
+                    ));
                     ParsedSheetMetadata {
                         cells: HashMap::new(),
                         columns: Ok(Vec::new()),
+                        rows: Ok(Vec::new()),
+                        defaults: SheetDefaults::default(),
                     }
                 }
             };
@@ -1116,11 +1174,23 @@ impl OoxmlSupplement {
                     Vec::new()
                 }
             };
+            let rows = match parsed.rows {
+                Ok(rows) => rows,
+                Err(message) => {
+                    warnings.push(format!(
+                        "xlsx row heights for sheet {:?} could not be read: {message}",
+                        workbook_sheet.name
+                    ));
+                    Vec::new()
+                }
+            };
             sheets.insert(
                 workbook_sheet.name,
                 OoxmlSheetSupplement {
                     cells: parsed.cells,
                     columns,
+                    rows,
+                    defaults: parsed.defaults,
                 },
             );
         }
@@ -1144,55 +1214,103 @@ impl OoxmlSupplement {
         })
     }
 
-    fn col_infos(&self, sheet: &str, used_cols: u32) -> Vec<ColInfo> {
-        const EXCEL_MAX_COLUMNS: u32 = 16_384;
-        const WIDTH_HEADROOM_COLUMNS: u32 = 256;
-
+    /// Declared per-row heights for one sheet, sorted by row with
+    /// last-declaration-wins duplicates, restricted to the used extent plus
+    /// the same fixed headroom as [`Self::col_infos`] so a hostile sheet
+    /// cannot inflate the model with heights for millions of unused rows.
+    fn row_infos(&self, sheet: &str, used_rows: u32) -> Vec<RowInfo> {
         let Some(sheet) = self.sheets.get(sheet) else {
             return Vec::new();
         };
-        let expansion_limit = used_cols
-            .min(EXCEL_MAX_COLUMNS)
-            .saturating_add(WIDTH_HEADROOM_COLUMNS)
-            .min(EXCEL_MAX_COLUMNS);
-        let limit = usize::try_from(expansion_limit).unwrap_or(usize::MAX);
-        let mut widths = vec![None; limit];
-        // A successor set skips columns that already received their
-        // last-declaration-wins value. Iterating declarations in reverse makes
-        // each output column writable once, bounding expansion by O(N + cap)
-        // even when thousands of declarations cover the same whole sheet.
-        let mut next_uncovered = (0..=limit).collect::<Vec<_>>();
-        let mut remaining = limit;
-        for declaration in sheet.columns.iter().rev() {
-            if remaining == 0 {
-                break;
-            }
-            let start = usize::try_from(declaration.min.saturating_sub(1)).unwrap_or(usize::MAX);
-            let end = usize::try_from(declaration.max.min(expansion_limit).saturating_sub(1))
-                .unwrap_or(usize::MAX);
-            if start >= limit || start > end {
-                continue;
-            }
-            let mut column = next_available_column(&mut next_uncovered, start);
-            while column <= end {
-                widths[column] = Some(declaration.width);
-                remaining -= 1;
-                let successor = next_available_column(&mut next_uncovered, column + 1);
-                next_uncovered[column] = successor;
-                column = successor;
-            }
-        }
-        widths
-            .into_iter()
-            .enumerate()
-            .filter_map(|(column, width)| {
-                Some(ColInfo {
-                    c: u32::try_from(column).ok()?,
-                    width: width?,
-                })
-            })
-            .collect()
+        row_infos_within_extent(&sheet.rows, used_rows)
     }
+
+    fn sheet_defaults(&self, sheet: &str) -> SheetDefaults {
+        self.sheets
+            .get(sheet)
+            .map(|sheet| sheet.defaults)
+            .unwrap_or_default()
+    }
+
+    fn col_infos(&self, sheet: &str, used_cols: u32) -> Vec<ColInfo> {
+        let Some(sheet) = self.sheets.get(sheet) else {
+            return Vec::new();
+        };
+        col_infos_within_extent(&sheet.columns, used_cols)
+    }
+}
+
+/// Expand explicit column-width declarations into per-column entries,
+/// restricted to the used extent plus a fixed headroom. Shared by every
+/// container's column-width path.
+fn col_infos_within_extent(columns: &[ColumnDeclaration], used_cols: u32) -> Vec<ColInfo> {
+    const EXCEL_MAX_COLUMNS: u32 = 16_384;
+    const WIDTH_HEADROOM_COLUMNS: u32 = 256;
+
+    let expansion_limit = used_cols
+        .min(EXCEL_MAX_COLUMNS)
+        .saturating_add(WIDTH_HEADROOM_COLUMNS)
+        .min(EXCEL_MAX_COLUMNS);
+    let limit = usize::try_from(expansion_limit).unwrap_or(usize::MAX);
+    let mut widths = vec![None; limit];
+    // A successor set skips columns that already received their
+    // last-declaration-wins value. Iterating declarations in reverse makes
+    // each output column writable once, bounding expansion by O(N + cap)
+    // even when thousands of declarations cover the same whole sheet.
+    let mut next_uncovered = (0..=limit).collect::<Vec<_>>();
+    let mut remaining = limit;
+    for declaration in columns.iter().rev() {
+        if remaining == 0 {
+            break;
+        }
+        let start = usize::try_from(declaration.min.saturating_sub(1)).unwrap_or(usize::MAX);
+        let end = usize::try_from(declaration.max.min(expansion_limit).saturating_sub(1))
+            .unwrap_or(usize::MAX);
+        if start >= limit || start > end {
+            continue;
+        }
+        let mut column = next_available_column(&mut next_uncovered, start);
+        while column <= end {
+            widths[column] = Some(declaration.width);
+            remaining -= 1;
+            let successor = next_available_column(&mut next_uncovered, column + 1);
+            next_uncovered[column] = successor;
+            column = successor;
+        }
+    }
+    widths
+        .into_iter()
+        .enumerate()
+        .filter_map(|(column, width)| {
+            Some(ColInfo {
+                c: u32::try_from(column).ok()?,
+                width: width?,
+            })
+        })
+        .collect()
+}
+
+/// Filter declared row heights to the used extent (plus fixed headroom,
+/// mirroring the column-width cap) and collapse duplicates last-wins.
+/// Shared by every container's row-height path.
+fn row_infos_within_extent(rows: &[RowDeclaration], used_rows: u32) -> Vec<RowInfo> {
+    const EXCEL_MAX_ROWS: u32 = 1_048_576;
+    const HEIGHT_HEADROOM_ROWS: u32 = 256;
+
+    let limit = used_rows
+        .min(EXCEL_MAX_ROWS)
+        .saturating_add(HEIGHT_HEADROOM_ROWS)
+        .min(EXCEL_MAX_ROWS);
+    let mut heights = BTreeMap::new();
+    for declaration in rows {
+        if declaration.row < limit {
+            heights.insert(declaration.row, declaration.height);
+        }
+    }
+    heights
+        .into_iter()
+        .map(|(row, height)| RowInfo { r: row, height })
+        .collect()
 }
 
 fn next_available_column(successors: &mut [usize], index: usize) -> usize {
@@ -1753,6 +1871,8 @@ fn xml_f64_attribute(
 struct ParsedSheetMetadata {
     cells: HashMap<(u32, u32), CellMetadata>,
     columns: Result<Vec<ColumnDeclaration>, String>,
+    rows: Result<Vec<RowDeclaration>, String>,
+    defaults: SheetDefaults,
 }
 
 fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
@@ -1761,6 +1881,9 @@ fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
     let mut cells = HashMap::new();
     let mut columns = Vec::new();
     let mut column_error = None;
+    let mut rows = Vec::new();
+    let mut row_error = None;
+    let mut defaults = SheetDefaults::default();
     let mut in_columns = false;
     let mut row_index = 0_u32;
     let mut col_index = 0_u32;
@@ -1785,11 +1908,38 @@ fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
                     }
                 }
             }
+            Ok(Event::Start(element) | Event::Empty(element))
+                if element.local_name().as_ref() == b"sheetFormatPr" =>
+            {
+                defaults = parse_sheet_format_defaults(&reader, &element);
+            }
             Ok(Event::Start(element)) if element.local_name().as_ref() == b"row" => {
                 if let Some(row) =
                     xml_attribute(&reader, &element, b"r")?.and_then(|row| row.parse::<u32>().ok())
                 {
                     row_index = row.saturating_sub(1);
+                }
+                if row_error.is_none() {
+                    match parse_row_height(&reader, &element, row_index) {
+                        Ok(Some(declaration)) => rows.push(declaration),
+                        Ok(None) => {}
+                        Err(message) => row_error = Some(message),
+                    }
+                }
+            }
+            // A self-closing row carries no cells but may still declare a
+            // height (a resized empty row). It deliberately leaves the
+            // cell-position bookkeeping (`row_index`/`col_index`) untouched.
+            Ok(Event::Empty(element)) if element.local_name().as_ref() == b"row" => {
+                let row = xml_attribute(&reader, &element, b"r")?
+                    .and_then(|row| row.parse::<u32>().ok())
+                    .map_or(row_index, |row| row.saturating_sub(1));
+                if row_error.is_none() {
+                    match parse_row_height(&reader, &element, row) {
+                        Ok(Some(declaration)) => rows.push(declaration),
+                        Ok(None) => {}
+                        Err(message) => row_error = Some(message),
+                    }
                 }
             }
             Ok(Event::End(element)) if element.local_name().as_ref() == b"row" => {
@@ -1829,12 +1979,60 @@ fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
     Ok(ParsedSheetMetadata {
         cells,
         columns: column_error.map_or_else(|| Ok(columns), Err),
+        rows: row_error.map_or_else(|| Ok(rows), Err),
+        defaults,
     })
+}
+
+/// Extract the declared height of one `<row>` element. Any finite,
+/// non-negative `ht` attribute counts (contract amendment C: user-set and
+/// Excel-persisted autofit heights are both the rendered height);
+/// `customHeight` is deliberately not required.
+fn parse_row_height(
+    reader: &XmlReader<&[u8]>,
+    element: &BytesStart<'_>,
+    row: u32,
+) -> Result<Option<RowDeclaration>, String> {
+    let Some(height) = xml_f64_attribute(reader, element, b"ht", "row height")? else {
+        return Ok(None);
+    };
+    if height < 0.0 {
+        return Err(format!("invalid row height {height}"));
+    }
+    Ok(Some(RowDeclaration { row, height }))
+}
+
+/// Extract `<sheetFormatPr>` defaults. `defaultColWidth` is preferred when
+/// declared; otherwise a declared `baseColWidth` is converted with the
+/// standard 5-pixel padding at the default MDW of 7 (`base + 5/7`), which
+/// keeps wide-base sheets rendering far closer than the global fallback.
+/// Malformed values are treated as absent, never as a sheet-wide failure.
+fn parse_sheet_format_defaults(
+    reader: &XmlReader<&[u8]>,
+    element: &BytesStart<'_>,
+) -> SheetDefaults {
+    let attribute = |key: &[u8]| {
+        xml_attribute(reader, element, key)
+            .ok()
+            .flatten()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value >= 0.0)
+    };
+    SheetDefaults {
+        row_height: attribute(b"defaultRowHeight"),
+        col_width: attribute(b"defaultColWidth")
+            .or_else(|| attribute(b"baseColWidth").map(|base| base + 5.0 / 7.0)),
+    }
 }
 
 #[cfg(test)]
 fn parse_column_declarations(xml: &[u8]) -> Result<Vec<ColumnDeclaration>, String> {
     parse_sheet_metadata(xml)?.columns
+}
+
+#[cfg(test)]
+fn parse_row_declarations(xml: &[u8]) -> Result<Vec<RowDeclaration>, String> {
+    parse_sheet_metadata(xml)?.rows
 }
 
 fn parse_column_declaration(
@@ -2117,6 +2315,7 @@ mod tests {
                 OoxmlSheetSupplement {
                     cells: HashMap::new(),
                     columns,
+                    ..OoxmlSheetSupplement::default()
                 },
             )]),
             ..OoxmlSupplement::default()
@@ -2135,6 +2334,127 @@ mod tests {
     }
 
     #[test]
+    fn row_heights_take_any_declared_ht_and_ignore_undeclared_rows() {
+        let xml = br#"
+            <worksheet>
+              <sheetFormatPr defaultRowHeight="14.4" defaultColWidth="9.14"/>
+              <sheetData>
+                <row r="1" ht="27.75" customHeight="1"><c r="A1"/></row>
+                <row r="2"><c r="A2"/></row>
+                <row r="3" ht="30.6"><c r="A3"/></row>
+                <row r="10" ht="45"/>
+                <row ht="12.75"><c r="A5"/></row>
+              </sheetData>
+            </worksheet>
+        "#;
+        let parsed = parse_sheet_metadata(xml).expect("sheet metadata should parse");
+        assert_eq!(
+            parsed.rows.expect("row declarations should parse"),
+            vec![
+                RowDeclaration {
+                    row: 0,
+                    height: 27.75
+                },
+                // Autofit-persisted ht without customHeight still counts.
+                RowDeclaration {
+                    row: 2,
+                    height: 30.6
+                },
+                // Self-closing resized empty row.
+                RowDeclaration {
+                    row: 9,
+                    height: 45.0
+                },
+                // Row without r falls back to position bookkeeping, which
+                // (like cell positions) does not advance past self-closing
+                // rows.
+                RowDeclaration {
+                    row: 3,
+                    height: 12.75
+                },
+            ]
+        );
+        assert_eq!(
+            parsed.defaults,
+            SheetDefaults {
+                row_height: Some(14.4),
+                col_width: Some(9.14),
+            }
+        );
+    }
+
+    #[test]
+    fn sheet_defaults_fall_back_to_base_col_width_and_shrug_off_junk() {
+        let parsed = parse_sheet_metadata(
+            br#"<worksheet><sheetFormatPr defaultRowHeight="15" baseColWidth="10"/><sheetData/></worksheet>"#,
+        )
+        .expect("sheet metadata should parse");
+        let col_width = parsed.defaults.col_width.expect("derived default width");
+        assert!((col_width - (10.0 + 5.0 / 7.0)).abs() < 1e-9);
+
+        let parsed = parse_sheet_metadata(
+            br#"<worksheet><sheetFormatPr defaultRowHeight="nope" defaultColWidth="-3"/><sheetData/></worksheet>"#,
+        )
+        .expect("malformed defaults must not fail the sheet");
+        assert_eq!(parsed.defaults, SheetDefaults::default());
+    }
+
+    #[test]
+    fn invalid_row_heights_are_rejected_for_fail_soft_callers() {
+        assert!(parse_row_declarations(
+            br#"<worksheet><sheetData><row r="1" ht="wide"><c r="A1"/></row></sheetData></worksheet>"#
+        )
+        .is_err());
+        assert!(parse_row_declarations(
+            br#"<worksheet><sheetData><row r="1" ht="-4"><c r="A1"/></row></sheetData></worksheet>"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn row_infos_dedupe_last_wins_sort_and_cap_to_used_extent_plus_headroom() {
+        let declarations = vec![
+            RowDeclaration {
+                row: 500,
+                height: 20.0,
+            },
+            RowDeclaration {
+                row: 3,
+                height: 18.0,
+            },
+            RowDeclaration {
+                row: 3,
+                height: 21.0,
+            },
+            RowDeclaration {
+                row: 1_000_000,
+                height: 99.0,
+            },
+        ];
+        let infos = row_infos_within_extent(&declarations, 400);
+        assert_eq!(
+            infos,
+            vec![
+                RowInfo { r: 3, height: 21.0 },
+                RowInfo {
+                    r: 500,
+                    height: 20.0
+                },
+            ]
+        );
+
+        // The cap can never exceed the Excel row limit.
+        let infos = row_infos_within_extent(
+            &[RowDeclaration {
+                row: 1_048_575,
+                height: 30.0,
+            }],
+            u32::MAX,
+        );
+        assert_eq!(infos.len(), 1);
+    }
+
+    #[test]
     fn overlapping_whole_sheet_widths_are_bounded_by_declarations_plus_cap() {
         let columns = (0..20_000)
             .map(|index| ColumnDeclaration {
@@ -2149,6 +2469,7 @@ mod tests {
                 OoxmlSheetSupplement {
                     cells: HashMap::new(),
                     columns,
+                    ..OoxmlSheetSupplement::default()
                 },
             )]),
             ..OoxmlSupplement::default()
@@ -2315,6 +2636,7 @@ mod tests {
                         },
                     )]),
                     columns: Vec::new(),
+                    ..OoxmlSheetSupplement::default()
                 },
             )]),
             xfs: vec![ResolvedXf {

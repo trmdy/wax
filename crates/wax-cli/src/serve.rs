@@ -658,12 +658,25 @@ fn checkpoint(cancel: &AtomicBool) -> Result<(), Failure> {
 
 fn sheet_summaries(store: &WorkbookStore) -> Vec<SheetSummary> {
     (0..store.sheet_count())
-        .filter_map(|sheet| store.sheet_meta(sheet))
-        .map(|meta| SheetSummary {
-            name: meta.name,
-            rows: meta.rows,
-            cols: meta.cols,
-            truncated: meta.truncated,
+        .filter_map(|sheet| {
+            let meta = store.sheet_meta(sheet)?;
+            Some(SheetSummary {
+                name: meta.name,
+                rows: meta.rows,
+                cols: meta.cols,
+                truncated: meta.truncated,
+                col_infos: store.sheet_col_infos(sheet).unwrap_or_default().to_vec(),
+                row_infos: store.sheet_row_infos(sheet).unwrap_or_default().to_vec(),
+                // The sheetSizeInfos contract promises concrete defaults:
+                // container declarations when present, Excel fallbacks
+                // otherwise, so consumers never carry their own.
+                default_row_height: meta
+                    .default_row_height
+                    .unwrap_or(wax_core::DEFAULT_ROW_HEIGHT_POINTS),
+                default_col_width: meta
+                    .default_col_width
+                    .unwrap_or(wax_core::DEFAULT_COL_WIDTH_CHARS),
+            })
         })
         .collect()
 }
@@ -769,6 +782,9 @@ mod tests {
             "test.xlsx",
             vec![Sheet {
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows: 1,
@@ -809,6 +825,9 @@ mod tests {
             "test.xlsx",
             vec![Sheet {
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows: 1,

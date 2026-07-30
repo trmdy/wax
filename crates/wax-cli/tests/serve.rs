@@ -111,6 +111,31 @@ fn open(server: &mut Server, id: u64) -> Value {
 }
 
 #[test]
+fn open_and_meta_carry_declared_sizes_and_resolved_defaults() {
+    let fixture = fixture_path().with_file_name("sizes.xlsx");
+    let mut server = Server::start(&[]);
+    let opened = open_path(&mut server, 40, &fixture);
+    let expected = json!([{
+        "name":"Sizes","rows":3,"cols":2,"truncated":false,
+        "colInfos":[{"c":1,"width":22.5}],
+        "rowInfos":[
+            {"r":0,"height":27.75},
+            {"r":2,"height":30.6},
+            {"r":5,"height":45.0}
+        ],
+        "defaultRowHeight":14.4,
+        "defaultColWidth":9.14
+    }]);
+    assert_eq!(opened["sheets"], expected);
+
+    server.send(json!({"id":41,"op":"meta","handle":opened["handle"]}));
+    let meta = server.receive();
+    assert_eq!(meta["ok"], true, "{meta}");
+    assert_eq!(meta["sheets"], expected);
+    assert!(server.eof().success());
+}
+
+#[test]
 fn version_handshake_and_eof_exit_zero() {
     let mut server = Server::start(&[]);
     server.send(json!({"id": 1, "op": "version"}));
@@ -122,7 +147,7 @@ fn version_handshake_and_eof_exit_zero() {
             "ok": true,
             "proto": 0,
             "version": env!("CARGO_PKG_VERSION"),
-            "caps": ["exportOverrides"],
+            "caps": ["exportOverrides", "sheetSizeInfos"],
         })
     );
     assert!(server.eof().success());
@@ -133,12 +158,23 @@ fn open_meta_window_close_happy_path() {
     let mut server = Server::start(&[]);
     let opened = open(&mut server, 10);
     assert_eq!(opened["proto"], 0);
-    assert_eq!(opened["caps"], json!(["exportOverrides"]));
+    assert_eq!(opened["caps"], json!(["exportOverrides", "sheetSizeInfos"]));
     assert_eq!(opened["handle"], "h1");
     assert_eq!(opened["truncated"], false);
+    // The sheetSizeInfos contract: all four size fields always present,
+    // defaults resolved to the Excel fallbacks when the file declares none.
     assert_eq!(
         opened["sheets"],
-        json!([{"name":"Reader","rows":4,"cols":7,"truncated":false}])
+        json!([{
+            "name":"Reader","rows":4,"cols":7,"truncated":false,
+            "colInfos":[
+                {"c":0,"width":12.5},{"c":1,"width":20.0},{"c":2,"width":20.0},
+                {"c":3,"width":20.0},{"c":6,"width":15.25}
+            ],
+            "rowInfos":[],
+            "defaultRowHeight":15.0,
+            "defaultColWidth":8.43
+        }])
     );
 
     server.send(json!({"id":11,"op":"meta","handle":"h1"}));
@@ -262,7 +298,8 @@ fn csv_export_is_rfc_4180_and_xlsx_succeeds() {
             "number formatting beyond display strings",
             "merges",
             "styles",
-            "column widths"
+            "column widths",
+            "row heights"
         ])
     );
 
@@ -425,6 +462,7 @@ fn export_appends_open_warnings_to_dropped() {
             "merges",
             "styles",
             "column widths",
+            "row heights",
             "xlsb merged regions are best-effort"
         ])
     );

@@ -83,6 +83,12 @@ pub struct Sheet {
     pub cells: Vec<Cell>,
     #[serde(default, rename = "colInfos")]
     pub col_infos: Vec<ColInfo>,
+    #[serde(default, rename = "rowInfos")]
+    pub row_infos: Vec<RowInfo>,
+    #[serde(default, rename = "defaultRowHeight")]
+    pub default_row_height: Option<f64>,
+    #[serde(default, rename = "defaultColWidth")]
+    pub default_col_width: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -104,6 +110,13 @@ pub struct Cell {
 pub struct ColInfo {
     pub c: u32,
     pub width: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RowInfo {
+    pub r: u32,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

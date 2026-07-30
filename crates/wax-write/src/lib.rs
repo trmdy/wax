@@ -32,12 +32,13 @@ use wax_store::{WindowCell, WorkbookStore};
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-const CSV_DROPPED: [&str; 5] = [
+const CSV_DROPPED: [&str; 6] = [
     "formulas (cached values only)",
     "number formatting beyond display strings",
     "merges",
     "styles",
     "column widths",
+    "row heights",
 ];
 const DEFAULT_DATE_FORMAT: &str = "yyyy-mm-dd";
 const DEFAULT_DATETIME_FORMAT: &str = r#"yyyy-mm-dd"T"hh:mm:ss"#;
@@ -46,6 +47,7 @@ const DEFAULT_TIME_FORMAT: &str = "hh:mm:ss";
 const DEFAULT_TIME_MILLIS_FORMAT: &str = "hh:mm:ss.000";
 const UNREPRESENTABLE_MERGES_DROPPED: &str = "unrepresentable merge ranges";
 const CLAMPED_COLUMN_WIDTHS_DROPPED: &str = "column widths clamped to 0..=255";
+const CLAMPED_ROW_HEIGHTS_DROPPED: &str = "row heights clamped to 0..=409.5";
 const XLSX_MAX_STRING_CHARS: usize = 32_767;
 const MAX_DROPPED_DETAILS: usize = 100;
 const XLSX_MAX_ROWS: u32 = 1_048_576;
@@ -286,7 +288,7 @@ pub fn write_xlsx_with_overrides(
     let mut formats = HashMap::new();
     let mut dropped = Dropped::default();
     let merge_format = Format::new();
-    let mut formula_patches = Vec::new();
+    let mut sheet_patches = Vec::<SheetXmlPatch>::new();
     let mut used_sheet_names = HashSet::new();
 
     for sheet_index in 0..store.sheet_count() {
@@ -319,6 +321,9 @@ pub fn write_xlsx_with_overrides(
         // value override this default below.
         worksheet.set_formula_result_default("");
 
+        // set_column_width() creates the <col> elements (pixel-quantized);
+        // the XML patch pass restores the exact character-unit values.
+        let mut sheet_col_width_patches = HashMap::new();
         for col_info in store
             .sheet_col_infos(sheet_index)
             .expect("sheet metadata and column metadata must agree")
@@ -332,6 +337,34 @@ pub fn write_xlsx_with_overrides(
             worksheet
                 .set_column_width(column, width)
                 .map_err(|error| xlsx_error("set column width", out, error))?;
+            sheet_col_width_patches.insert(col_info.c.saturating_add(1), width);
+        }
+
+        // set_row_height() creates the <row> elements (pixel-quantized);
+        // the XML patch pass restores the exact point values afterwards.
+        let mut sheet_row_height_patches = HashMap::new();
+        for row_info in store
+            .sheet_row_infos(sheet_index)
+            .expect("sheet metadata and row metadata must agree")
+        {
+            checkpoint(cancel)?;
+            let height = clamp_row_height(row_info.height);
+            if !row_info.height.is_finite() || height != row_info.height {
+                dropped.add(CLAMPED_ROW_HEIGHTS_DROPPED);
+            }
+            let row = xlsx_row(row_info.r)?;
+            worksheet
+                .set_row_height(row, height)
+                .map_err(|error| xlsx_error("set row height", out, error))?;
+            sheet_row_height_patches.insert(row_info.r.saturating_add(1), height);
+        }
+
+        if let Some(default_height) = meta.default_row_height {
+            let height = clamp_row_height(default_height);
+            if !default_height.is_finite() || height != default_height {
+                dropped.add(CLAMPED_ROW_HEIGHTS_DROPPED);
+            }
+            worksheet.set_default_row_height(height);
         }
 
         // rust_xlsxwriter's merge_range() writes a string into the anchor.
@@ -481,7 +514,13 @@ pub fn write_xlsx_with_overrides(
                 )?;
             }
         }
-        formula_patches.push(sheet_formula_patches);
+        sheet_patches.push(SheetXmlPatch {
+            formulas: sheet_formula_patches,
+            row_heights: sheet_row_height_patches,
+            col_widths: sheet_col_width_patches,
+            default_row_height: meta.default_row_height.map(clamp_row_height),
+            default_col_width: meta.default_col_width.map(clamp_column_width),
+        });
     }
 
     if replaced_formula_cells > 0 {
@@ -496,7 +535,7 @@ pub fn write_xlsx_with_overrides(
         .save(temp.path())
         .map_err(|error| xlsx_error("save workbook", out, error))?;
     checkpoint(cancel)?;
-    temp = normalize_formula_xml(temp, out, &formula_patches, cancel)?;
+    temp = normalize_generated_xml(temp, out, &sheet_patches, cancel)?;
     temp.as_file()
         .sync_all()
         .map_err(|error| io_error("sync temporary xlsx output", out, error))?;
@@ -753,13 +792,43 @@ struct FormulaPatch {
     cell_type: CellType,
 }
 
-fn normalize_formula_xml(
+/// Post-generation surgery for one worksheet: formula normalization plus
+/// exact size fidelity. rust_xlsxwriter quantizes row heights to whole
+/// pixels (0.75 pt steps) and has no default-column-width setter, so the
+/// source's exact values are patched back into the generated XML.
+#[derive(Clone, Debug, Default)]
+struct SheetXmlPatch {
+    formulas: Vec<FormulaPatch>,
+    /// Exact heights keyed by the 1-based `r` attribute of `<row>`.
+    row_heights: HashMap<u32, f64>,
+    /// Exact widths keyed by the 1-based `min`/`max` range values of `<col>`.
+    col_widths: HashMap<u32, f64>,
+    default_row_height: Option<f64>,
+    default_col_width: Option<f64>,
+}
+
+impl SheetXmlPatch {
+    fn is_empty(&self) -> bool {
+        self.formulas.is_empty()
+            && self.row_heights.is_empty()
+            && self.col_widths.is_empty()
+            && self.default_row_height.is_none()
+            && self.default_col_width.is_none()
+    }
+}
+
+/// Shortest-representation float for XML attribute values.
+fn xml_float(value: f64) -> String {
+    format!("{value}")
+}
+
+fn normalize_generated_xml(
     source: NamedTempFile,
     out: &Path,
-    sheets: &[Vec<FormulaPatch>],
+    sheets: &[SheetXmlPatch],
     cancel: &AtomicBool,
 ) -> Result<NamedTempFile, WriteError> {
-    if sheets.iter().all(Vec::is_empty) {
+    if sheets.iter().all(SheetXmlPatch::is_empty) {
         return Ok(source);
     }
 
@@ -799,9 +868,9 @@ fn normalize_formula_xml(
 
             let patches = worksheet_patch_index(&name)
                 .and_then(|sheet| sheets.get(sheet))
-                .filter(|patches| !patches.is_empty());
+                .filter(|patch| !patch.is_empty());
             if let Some(patches) = patches {
-                normalize_worksheet_formulas(&mut entry, &mut output, patches, out, cancel)?;
+                normalize_worksheet_xml(&mut entry, &mut output, patches, out, cancel)?;
             } else {
                 std::io::copy(&mut entry, &mut output)
                     .map_err(|error| io_error("copy temporary xlsx entry", out, error))?;
@@ -827,13 +896,133 @@ fn worksheet_patch_index(name: &str) -> Option<usize> {
     number.checked_sub(1)
 }
 
-fn normalize_worksheet_formulas(
+/// Rewrite `<sheetFormatPr>` with the source's exact defaults: the
+/// generated `defaultRowHeight` is pixel-quantized, and `defaultColWidth`
+/// is never generated at all.
+fn patched_sheet_format_pr(start: &BytesStart<'_>, patch: &SheetXmlPatch) -> BytesStart<'static> {
+    let mut element = BytesStart::new("sheetFormatPr");
+    for attribute in start.attributes().with_checks(false).filter_map(Result::ok) {
+        let key = attribute.key.as_ref();
+        if key == b"defaultColWidth"
+            || (key == b"defaultRowHeight" && patch.default_row_height.is_some())
+        {
+            continue;
+        }
+        element.push_attribute(attribute);
+    }
+    if let Some(height) = patch.default_row_height {
+        element.push_attribute(("defaultRowHeight", xml_float(height).as_str()));
+    }
+    if let Some(width) = patch.default_col_width {
+        element.push_attribute(("defaultColWidth", xml_float(width).as_str()));
+    }
+    element
+}
+
+/// Rewrite one generated `<col>` element with the source's exact
+/// character-unit widths. rust_xlsxwriter quantizes widths to pixels, so
+/// two source columns with distinct exact widths can collapse into one
+/// generated range; the range is re-split into runs of equal exact width.
+fn patched_col_segments(
+    start: &BytesStart<'_>,
+    widths: &HashMap<u32, f64>,
+    out: &Path,
+) -> Result<Vec<BytesStart<'static>>, WriteError> {
+    let attribute_value = |key: &[u8]| {
+        start
+            .attributes()
+            .with_checks(false)
+            .filter_map(Result::ok)
+            .find(|attribute| attribute.key.as_ref() == key)
+            .and_then(|attribute| {
+                std::str::from_utf8(attribute.value.as_ref())
+                    .ok()
+                    .and_then(|value| value.parse::<u32>().ok())
+            })
+    };
+    let (Some(min), Some(max)) = (attribute_value(b"min"), attribute_value(b"max")) else {
+        return Err(WriteError::new(
+            "internal",
+            format!(
+                "generated col element without min/max range in {}",
+                out.display()
+            ),
+        ));
+    };
+    if min > max || !(min..=max).any(|column| widths.contains_key(&column)) {
+        return Ok(vec![start.to_owned().into_owned()]);
+    }
+
+    let mut segments = Vec::new();
+    let mut cursor = min;
+    while cursor <= max {
+        let width = widths.get(&cursor).copied();
+        let mut end = cursor;
+        while end < max && widths.get(&(end + 1)).copied() == width {
+            end += 1;
+        }
+        let mut element = BytesStart::new("col");
+        element.push_attribute(("min", cursor.to_string().as_str()));
+        element.push_attribute(("max", end.to_string().as_str()));
+        if let Some(width) = width {
+            element.push_attribute(("width", xml_float(width).as_str()));
+        }
+        for attribute in start.attributes().with_checks(false).filter_map(Result::ok) {
+            match attribute.key.as_ref() {
+                b"min" | b"max" => {}
+                b"width" if width.is_some() => {}
+                _ => element.push_attribute(attribute),
+            }
+        }
+        segments.push(element);
+        cursor = match end.checked_add(1) {
+            Some(next) => next,
+            None => break,
+        };
+    }
+    Ok(segments)
+}
+
+/// Rewrite a `<row>`'s `ht` attribute with the source's exact height when
+/// the row is patched (the generated value is pixel-quantized). Rows the
+/// source did NOT declare a height for get `ht`/`customHeight` stripped:
+/// with a custom default row height, rust_xlsxwriter stamps the default
+/// onto every populated row, which would turn sparse declarations dense
+/// on read-back.
+fn patched_row_height(start: &BytesStart<'_>, patch: &SheetXmlPatch) -> BytesStart<'static> {
+    let height = start
+        .attributes()
+        .with_checks(false)
+        .filter_map(Result::ok)
+        .find(|attribute| attribute.key.as_ref() == b"r")
+        .and_then(|attribute| {
+            std::str::from_utf8(attribute.value.as_ref())
+                .ok()
+                .and_then(|row| row.parse::<u32>().ok())
+        })
+        .and_then(|row| patch.row_heights.get(&row).copied());
+    let mut element = BytesStart::new("row");
+    for attribute in start.attributes().with_checks(false).filter_map(Result::ok) {
+        match attribute.key.as_ref() {
+            b"ht" => {}
+            b"customHeight" if height.is_none() => {}
+            _ => element.push_attribute(attribute),
+        }
+    }
+    if let Some(height) = height {
+        element.push_attribute(("ht", xml_float(height).as_str()));
+    }
+    element
+}
+
+fn normalize_worksheet_xml(
     input: &mut impl std::io::Read,
     output: &mut impl Write,
-    patches: &[FormulaPatch],
+    patch: &SheetXmlPatch,
     out: &Path,
     cancel: &AtomicBool,
 ) -> Result<(), WriteError> {
+    let patches = &patch.formulas;
     let patch_by_cell = patches
         .iter()
         .enumerate()
@@ -850,6 +1039,45 @@ fn normalize_worksheet_formulas(
             .read_event_into(&mut buffer)
             .map_err(|error| archive_error("parse generated worksheet XML", out, error))?;
         match event {
+            Event::Start(start) if start.name().as_ref() == b"sheetFormatPr" => {
+                let start = patched_sheet_format_pr(&start, patch);
+                writer
+                    .write_event(Event::Start(start))
+                    .map_err(|error| io_error("write normalized worksheet XML", out, error))?;
+            }
+            Event::Empty(start) if start.name().as_ref() == b"sheetFormatPr" => {
+                let start = patched_sheet_format_pr(&start, patch);
+                writer
+                    .write_event(Event::Empty(start))
+                    .map_err(|error| io_error("write normalized worksheet XML", out, error))?;
+            }
+            Event::Empty(start)
+                if start.name().as_ref() == b"col" && !patch.col_widths.is_empty() =>
+            {
+                for element in patched_col_segments(&start, &patch.col_widths, out)? {
+                    writer
+                        .write_event(Event::Empty(element))
+                        .map_err(|error| io_error("write normalized worksheet XML", out, error))?;
+                }
+            }
+            Event::Start(start)
+                if start.name().as_ref() == b"row"
+                    && (!patch.row_heights.is_empty() || patch.default_row_height.is_some()) =>
+            {
+                let start = patched_row_height(&start, patch);
+                writer
+                    .write_event(Event::Start(start))
+                    .map_err(|error| io_error("write normalized worksheet XML", out, error))?;
+            }
+            Event::Empty(start)
+                if start.name().as_ref() == b"row"
+                    && (!patch.row_heights.is_empty() || patch.default_row_height.is_some()) =>
+            {
+                let start = patched_row_height(&start, patch);
+                writer
+                    .write_event(Event::Empty(start))
+                    .map_err(|error| io_error("write normalized worksheet XML", out, error))?;
+            }
             Event::Start(start) if start.name().as_ref() == b"c" => {
                 checkpoint(cancel)?;
                 current_patch = start
@@ -1399,6 +1627,15 @@ fn clamp_column_width(width: f64) -> f64 {
     }
 }
 
+/// xlsx row heights live in 0..=409.5 points.
+fn clamp_row_height(height: f64) -> f64 {
+    if height.is_nan() {
+        0.0
+    } else {
+        height.clamp(0.0, 409.5)
+    }
+}
+
 fn parse_a1_range(range: &str) -> Option<(u32, u16, u32, u16)> {
     let (start, end) = range.split_once(':').unwrap_or((range, range));
     let (start_row, start_column) = parse_a1_cell(start)?;
@@ -1611,7 +1848,7 @@ mod tests {
     use std::io::Read;
 
     use super::*;
-    use wax_core::{Cell, ColInfo, Document, Sheet};
+    use wax_core::{Cell, ColInfo, Document, RowInfo, Sheet};
     use wax_read::{CalamineReader, Reader, ReaderOptions};
     use zip::ZipArchive;
 
@@ -1648,6 +1885,9 @@ mod tests {
             merges: merges.iter().map(|range| (*range).to_owned()).collect(),
             cells,
             col_infos: Vec::new(),
+            row_infos: Vec::new(),
+            default_row_height: None,
+            default_col_width: None,
         }
     }
 
@@ -2234,6 +2474,74 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_round_trips_row_heights_and_size_defaults_exactly() {
+        let mut model = sheet("Sizes", 3, 2, Vec::new(), &[]);
+        model.col_infos = vec![ColInfo { c: 1, width: 22.5 }];
+        // 30.6 is not representable in rust_xlsxwriter's whole-pixel
+        // quantization (0.75 pt steps); exact survival proves the XML patch.
+        model.row_infos = vec![
+            RowInfo {
+                r: 0,
+                height: 27.75,
+            },
+            RowInfo { r: 2, height: 30.6 },
+            RowInfo { r: 5, height: 45.0 },
+        ];
+        model.default_row_height = Some(14.4);
+        model.default_col_width = Some(9.14);
+        let store = store_with(vec![model], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("sizes.xlsx");
+
+        let outcome = write_xlsx(&store, &out, &AtomicBool::new(false)).expect("xlsx should write");
+        assert_eq!(outcome.dropped, [] as [String; 0]);
+
+        let actual = read_xlsx(&out);
+        let sheet = &actual.sheets[0];
+        assert_eq!(sheet.col_infos, vec![ColInfo { c: 1, width: 22.5 }]);
+        assert_eq!(
+            sheet.row_infos,
+            vec![
+                RowInfo {
+                    r: 0,
+                    height: 27.75,
+                },
+                RowInfo { r: 2, height: 30.6 },
+                RowInfo { r: 5, height: 45.0 },
+            ]
+        );
+        assert_eq!(sheet.default_row_height, Some(14.4));
+        assert_eq!(sheet.default_col_width, Some(9.14));
+    }
+
+    #[test]
+    fn xlsx_clamps_out_of_range_row_heights_loudly() {
+        let mut model = sheet("Heights", 2, 1, Vec::new(), &[]);
+        model.row_infos = vec![
+            RowInfo { r: 0, height: -5.0 },
+            RowInfo {
+                r: 1,
+                height: 500.0,
+            },
+        ];
+        let store = store_with(vec![model], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("clamped-heights.xlsx");
+
+        let outcome = write_xlsx(&store, &out, &AtomicBool::new(false))
+            .expect("out-of-range heights should be clamped");
+        assert_eq!(outcome.dropped, [CLAMPED_ROW_HEIGHTS_DROPPED]);
+        assert_eq!(clamp_row_height(-5.0), 0.0);
+        assert_eq!(clamp_row_height(500.0), 409.5);
+        let heights = read_xlsx(&out).sheets[0]
+            .row_infos
+            .iter()
+            .map(|info| (info.r, info.height))
+            .collect::<Vec<_>>();
+        assert!(heights.contains(&(1, 409.5)), "{heights:?}");
+    }
+
+    #[test]
     fn xlsx_clamps_out_of_range_column_widths_loudly() {
         let mut model = sheet("Widths", 0, 2, Vec::new(), &[]);
         model.col_infos = vec![
@@ -2486,6 +2794,7 @@ mod tests {
                 "merges",
                 "styles",
                 "column widths",
+                "row heights",
             ]
         );
     }
