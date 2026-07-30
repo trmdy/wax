@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "wax-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "wax-fmt"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "wax-fuzz"
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "wax-proto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "wax-read"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "calamine",
  "cfb",
