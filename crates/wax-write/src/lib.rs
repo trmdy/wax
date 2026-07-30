@@ -26,7 +26,7 @@ use rust_xlsxwriter::{
     Color, ExcelDateTime, Format, FormatUnderline, Formula, Workbook, Worksheet, XlsxError,
 };
 use tempfile::{Builder as TempFileBuilder, NamedTempFile};
-use wax_core::{CellOverride, CellStyle, CellType, CellValue, EXPORT_OVERRIDES_CAP};
+use wax_core::{CellOverride, CellStyle, CellType, CellValue, SizeOverrides, EXPORT_OVERRIDES_CAP};
 use wax_fmt::FmtValue;
 use wax_store::{WindowCell, WorkbookStore};
 use zip::write::SimpleFileOptions;
@@ -229,12 +229,92 @@ fn render_override_display(fmt: Option<&str>, value: FmtValue<'_>) -> Option<Str
 /// checkpoints; a cancelled export returns `code: "cancelled"` and leaves no
 /// partial output file behind.
 ///
+/// Per-sheet last-wins size edits, validated against the store.
+#[derive(Clone, Debug, Default)]
+struct SheetSizeOverrides {
+    cols: HashMap<u32, f64>,
+    rows: HashMap<u32, f64>,
+}
+
+/// Validate and collapse export size overrides (v0.3 exportSizeOverrides):
+/// the combined count shares the cell-override cap, sheet indices must
+/// exist, and targets must lie inside the xlsx grid. Values are collapsed
+/// last-wins per column/row; out-of-range sizes are clamped loudly at
+/// application time, not rejected here.
+fn collapse_size_overrides(
+    store: &WorkbookStore,
+    sizes: &SizeOverrides,
+) -> Result<HashMap<u32, SheetSizeOverrides>, WriteError> {
+    if sizes.len() > EXPORT_OVERRIDES_CAP {
+        return Err(WriteError::new(
+            "bad_request",
+            format!(
+                "sizeOverrides length {} exceeds the {EXPORT_OVERRIDES_CAP}-entry cap",
+                sizes.len()
+            ),
+        ));
+    }
+    let sheet_count = store.sheet_count();
+    let mut collapsed: HashMap<u32, SheetSizeOverrides> = HashMap::new();
+    for (index, entry) in sizes.cols.iter().enumerate() {
+        if entry.sheet >= sheet_count {
+            return Err(WriteError::new(
+                "bad_request",
+                format!(
+                    "sizeOverrides.cols[{index}] sheet index {} is out of range",
+                    entry.sheet
+                ),
+            ));
+        }
+        if entry.c >= XLSX_MAX_COLS {
+            return Err(WriteError::new(
+                "bad_request",
+                format!(
+                    "sizeOverrides.cols[{index}] column {} exceeds the xlsx limit",
+                    entry.c
+                ),
+            ));
+        }
+        collapsed
+            .entry(entry.sheet)
+            .or_default()
+            .cols
+            .insert(entry.c, entry.width);
+    }
+    for (index, entry) in sizes.rows.iter().enumerate() {
+        if entry.sheet >= sheet_count {
+            return Err(WriteError::new(
+                "bad_request",
+                format!(
+                    "sizeOverrides.rows[{index}] sheet index {} is out of range",
+                    entry.sheet
+                ),
+            ));
+        }
+        if entry.r >= XLSX_MAX_ROWS {
+            return Err(WriteError::new(
+                "bad_request",
+                format!(
+                    "sizeOverrides.rows[{index}] row {} exceeds the xlsx limit",
+                    entry.r
+                ),
+            ));
+        }
+        collapsed
+            .entry(entry.sheet)
+            .or_default()
+            .rows
+            .insert(entry.r, entry.height);
+    }
+    Ok(collapsed)
+}
+
 pub fn write_xlsx(
     store: &WorkbookStore,
     out: &Path,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
-    write_xlsx_with_overrides(store, out, &[], cancel)
+    write_xlsx_with_overrides(store, out, &[], &SizeOverrides::default(), cancel)
 }
 
 /// [`write_xlsx`] with edited cell values layered over the read model per
@@ -246,6 +326,7 @@ pub fn write_xlsx_with_overrides(
     store: &WorkbookStore,
     out: &Path,
     overrides: &[CellOverride],
+    sizes: &SizeOverrides,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
     checkpoint(cancel)?;
@@ -253,6 +334,7 @@ pub fn write_xlsx_with_overrides(
         return Err(WriteError::new("bad_request", "empty workbook"));
     }
     let sheet_overrides = collapse_overrides(store, overrides, None)?;
+    let sheet_size_overrides = collapse_size_overrides(store, sizes)?;
     // The xlsx grid itself is an extent cap (A5: `too_large`). Checked after
     // collapse so the `bad_request` taxonomy (cap, unknown sheet) wins when
     // both apply.
@@ -321,42 +403,58 @@ pub fn write_xlsx_with_overrides(
         // value override this default below.
         worksheet.set_formula_result_default("");
 
+        // Size overrides layer over the read model's declarations,
+        // last-wins per column/row, before the shared clamp rail.
+        let size_edits = sheet_size_overrides.get(&sheet_index);
+        let mut effective_col_widths = store
+            .sheet_col_infos(sheet_index)
+            .expect("sheet metadata and column metadata must agree")
+            .iter()
+            .map(|info| (info.c, info.width))
+            .collect::<BTreeMap<_, _>>();
+        if let Some(edits) = size_edits {
+            effective_col_widths.extend(edits.cols.iter().map(|(&c, &width)| (c, width)));
+        }
+        let mut effective_row_heights = store
+            .sheet_row_infos(sheet_index)
+            .expect("sheet metadata and row metadata must agree")
+            .iter()
+            .map(|info| (info.r, info.height))
+            .collect::<BTreeMap<_, _>>();
+        if let Some(edits) = size_edits {
+            effective_row_heights.extend(edits.rows.iter().map(|(&r, &height)| (r, height)));
+        }
+
         // set_column_width() creates the <col> elements (pixel-quantized);
         // the XML patch pass restores the exact character-unit values.
         let mut sheet_col_width_patches = HashMap::new();
-        for col_info in store
-            .sheet_col_infos(sheet_index)
-            .expect("sheet metadata and column metadata must agree")
-        {
+        for (&column_index, &raw_width) in &effective_col_widths {
             checkpoint(cancel)?;
-            let width = clamp_column_width(col_info.width);
-            if !col_info.width.is_finite() || width != col_info.width {
+            let width = clamp_column_width(raw_width);
+            if !raw_width.is_finite() || width != raw_width {
                 dropped.add(CLAMPED_COLUMN_WIDTHS_DROPPED);
             }
-            let column = xlsx_column(col_info.c)?;
+            let column = xlsx_column(column_index)?;
             worksheet
                 .set_column_width(column, width)
                 .map_err(|error| xlsx_error("set column width", out, error))?;
-            sheet_col_width_patches.insert(col_info.c.saturating_add(1), width);
+            sheet_col_width_patches.insert(column_index.saturating_add(1), width);
         }
 
         // set_row_height() creates the <row> elements (pixel-quantized);
         // the XML patch pass restores the exact point values afterwards.
         let mut sheet_row_height_patches = HashMap::new();
-        for row_info in store
-            .sheet_row_infos(sheet_index)
-            .expect("sheet metadata and row metadata must agree")
-        {
+        for (&row_index, &raw_height) in &effective_row_heights {
             checkpoint(cancel)?;
-            let height = clamp_row_height(row_info.height);
-            if !row_info.height.is_finite() || height != row_info.height {
+            let height = clamp_row_height(raw_height);
+            if !raw_height.is_finite() || height != raw_height {
                 dropped.add(CLAMPED_ROW_HEIGHTS_DROPPED);
             }
-            let row = xlsx_row(row_info.r)?;
+            let row = xlsx_row(row_index)?;
             worksheet
                 .set_row_height(row, height)
                 .map_err(|error| xlsx_error("set row height", out, error))?;
-            sheet_row_height_patches.insert(row_info.r.saturating_add(1), height);
+            sheet_row_height_patches.insert(row_index.saturating_add(1), height);
         }
 
         if let Some(default_height) = meta.default_row_height {
@@ -565,7 +663,7 @@ pub fn write_csv(
     out: &Path,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
-    write_csv_with_overrides(store, sheet, out, &[], cancel)
+    write_csv_with_overrides(store, sheet, out, &[], &SizeOverrides::default(), cancel)
 }
 
 /// [`write_csv`] with edited cell values layered over the read model per
@@ -578,6 +676,7 @@ pub fn write_csv_with_overrides(
     sheet: u32,
     out: &Path,
     overrides: &[CellOverride],
+    sizes: &SizeOverrides,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, WriteError> {
     let meta = store.sheet_meta(sheet).ok_or_else(|| {
@@ -589,6 +688,12 @@ pub fn write_csv_with_overrides(
     checkpoint(cancel)?;
     let mut collapsed = collapse_overrides(store, overrides, Some(sheet))?;
     let sheet_overrides = collapsed.remove(&sheet).unwrap_or_default();
+    // Size overrides are validated with the full taxonomy but cannot be
+    // represented in csv; the ones aimed at the exported sheet degrade
+    // loudly below (A6 scope: other sheets' entries are ignored).
+    let dropped_size_overrides = collapse_size_overrides(store, sizes)?
+        .remove(&sheet)
+        .map_or(0, |edits| edits.cols.len().saturating_add(edits.rows.len()));
     let applied = sheet_overrides.cells.len() as u64;
     let (out_rows, out_cols) = if sheet_overrides.cells.is_empty() {
         (meta.rows, meta.cols)
@@ -733,6 +838,11 @@ pub fn write_csv_with_overrides(
         .iter()
         .map(|entry| (*entry).to_owned())
         .collect::<Vec<_>>();
+    if dropped_size_overrides > 0 {
+        dropped.push(format!(
+            "size overrides are not representable in csv ({dropped_size_overrides})"
+        ));
+    }
     if !replaced_formulas.is_empty() {
         dropped.push(format!(
             "formulas replaced by edited values ({})",
@@ -1848,7 +1958,7 @@ mod tests {
     use std::io::Read;
 
     use super::*;
-    use wax_core::{Cell, ColInfo, Document, RowInfo, Sheet};
+    use wax_core::{Cell, ColInfo, ColSizeOverride, Document, RowInfo, RowSizeOverride, Sheet};
     use wax_read::{CalamineReader, Reader, ReaderOptions};
     use zip::ZipArchive;
 
@@ -2515,6 +2625,214 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_size_overrides_apply_last_wins_and_round_trip_exactly() {
+        let mut model = sheet("Sizes", 3, 2, Vec::new(), &[]);
+        model.col_infos = vec![ColInfo { c: 1, width: 22.5 }];
+        model.row_infos = vec![RowInfo {
+            r: 0,
+            height: 27.75,
+        }];
+        let store = store_with(vec![model], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("size-overrides.xlsx");
+
+        let sizes = SizeOverrides {
+            cols: vec![
+                // Replaces the declared width, then loses to the later entry.
+                ColSizeOverride {
+                    sheet: 0,
+                    c: 1,
+                    width: 30.0,
+                },
+                ColSizeOverride {
+                    sheet: 0,
+                    c: 1,
+                    width: 18.6,
+                },
+                // A column the source declared nothing for.
+                ColSizeOverride {
+                    sheet: 0,
+                    c: 3,
+                    width: 40.25,
+                },
+            ],
+            rows: vec![RowSizeOverride {
+                sheet: 0,
+                r: 4,
+                height: 33.3,
+            }],
+        };
+        let outcome = write_xlsx_with_overrides(&store, &out, &[], &sizes, &AtomicBool::new(false))
+            .expect("xlsx export should work");
+        assert_eq!(outcome.dropped, [] as [String; 0]);
+
+        let sheet = &read_xlsx(&out).sheets[0];
+        assert_eq!(
+            sheet.col_infos,
+            vec![
+                ColInfo { c: 1, width: 18.6 },
+                ColInfo { c: 3, width: 40.25 },
+            ]
+        );
+        assert_eq!(
+            sheet.row_infos,
+            vec![
+                RowInfo {
+                    r: 0,
+                    height: 27.75,
+                },
+                RowInfo { r: 4, height: 33.3 },
+            ]
+        );
+    }
+
+    #[test]
+    fn size_overrides_reject_unknown_sheets_and_grid_overflow_and_clamp_loudly() {
+        let store = store_with(vec![sheet("Sheet1", 2, 2, Vec::new(), &[])], Vec::new());
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let cancel = AtomicBool::new(false);
+
+        let error = write_xlsx_with_overrides(
+            &store,
+            &temp.path().join("a.xlsx"),
+            &[],
+            &SizeOverrides {
+                cols: vec![ColSizeOverride {
+                    sheet: 3,
+                    c: 0,
+                    width: 9.0,
+                }],
+                rows: Vec::new(),
+            },
+            &cancel,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "bad_request");
+        assert!(error.msg.contains("sheet index 3"), "{}", error.msg);
+
+        let error = write_xlsx_with_overrides(
+            &store,
+            &temp.path().join("b.xlsx"),
+            &[],
+            &SizeOverrides {
+                cols: Vec::new(),
+                rows: vec![RowSizeOverride {
+                    sheet: 0,
+                    r: 1_048_576,
+                    height: 15.0,
+                }],
+            },
+            &cancel,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "bad_request");
+        assert!(error.msg.contains("1048576"), "{}", error.msg);
+
+        let out = temp.path().join("clamped.xlsx");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &[],
+            &SizeOverrides {
+                cols: vec![ColSizeOverride {
+                    sheet: 0,
+                    c: 0,
+                    width: 300.0,
+                }],
+                rows: vec![RowSizeOverride {
+                    sheet: 0,
+                    r: 0,
+                    height: -3.0,
+                }],
+            },
+            &cancel,
+        )
+        .expect("clamped size overrides should export");
+        assert_eq!(
+            outcome.dropped,
+            [CLAMPED_COLUMN_WIDTHS_DROPPED, CLAMPED_ROW_HEIGHTS_DROPPED]
+        );
+        let sheet = &read_xlsx(&out).sheets[0];
+        assert_eq!(sheet.col_infos, vec![ColInfo { c: 0, width: 255.0 }]);
+        assert_eq!(sheet.row_infos, vec![RowInfo { r: 0, height: 0.0 }]);
+    }
+
+    #[test]
+    fn csv_drops_size_overrides_loudly_and_scopes_to_the_exported_sheet() {
+        let store = store_with(
+            vec![
+                sheet("First", 1, 1, Vec::new(), &[]),
+                sheet("Second", 1, 1, Vec::new(), &[]),
+            ],
+            Vec::new(),
+        );
+        let temp = tempfile::tempdir().expect("temporary directory");
+        let out = temp.path().join("sizes.csv");
+        let sizes = SizeOverrides {
+            cols: vec![
+                ColSizeOverride {
+                    sheet: 0,
+                    c: 0,
+                    width: 9.0,
+                },
+                // Duplicate collapses last-wins before counting.
+                ColSizeOverride {
+                    sheet: 0,
+                    c: 0,
+                    width: 12.0,
+                },
+                // Another sheet's entry is ignored by the csv scope.
+                ColSizeOverride {
+                    sheet: 1,
+                    c: 0,
+                    width: 9.0,
+                },
+            ],
+            rows: vec![RowSizeOverride {
+                sheet: 0,
+                r: 0,
+                height: 20.0,
+            }],
+        };
+        let outcome =
+            write_csv_with_overrides(&store, 0, &out, &[], &sizes, &AtomicBool::new(false))
+                .expect("csv export should work");
+        assert!(
+            outcome
+                .dropped
+                .contains(&"size overrides are not representable in csv (2)".to_owned()),
+            "{:?}",
+            outcome.dropped
+        );
+
+        // Overrides aimed only at other sheets stay silent.
+        let outcome = write_csv_with_overrides(
+            &store,
+            1,
+            &out,
+            &[],
+            &SizeOverrides {
+                cols: vec![ColSizeOverride {
+                    sheet: 0,
+                    c: 0,
+                    width: 9.0,
+                }],
+                rows: Vec::new(),
+            },
+            &AtomicBool::new(false),
+        )
+        .expect("csv export should work");
+        assert!(
+            !outcome
+                .dropped
+                .iter()
+                .any(|entry| entry.contains("size overrides")),
+            "{:?}",
+            outcome.dropped
+        );
+    }
+
+    #[test]
     fn xlsx_clamps_out_of_range_row_heights_loudly() {
         let mut model = sheet("Heights", 2, 1, Vec::new(), &[]);
         model.row_infos = vec![
@@ -3099,8 +3417,15 @@ mod tests {
     ) -> (String, ExportOutcome) {
         let temp = tempfile::tempdir().expect("temporary directory");
         let out = temp.path().join("overrides.csv");
-        let outcome = write_csv_with_overrides(store, 0, &out, overrides, &AtomicBool::new(false))
-            .expect("csv export should work");
+        let outcome = write_csv_with_overrides(
+            store,
+            0,
+            &out,
+            overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("csv export should work");
         (
             std::fs::read_to_string(&out).expect("csv should be readable"),
             outcome,
@@ -3144,6 +3469,7 @@ mod tests {
             &store,
             &out,
             &[ov(0, 0, 0, Some(CellValue::Number(2.0)))],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should work");
@@ -3236,6 +3562,7 @@ mod tests {
                 ov(0, 0, 0, Some(CellValue::Number(3.0))),
                 ov(0, 0, 2, Some(CellValue::Number(7.0))),
             ],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should work");
@@ -3301,6 +3628,7 @@ mod tests {
             &store,
             &out,
             &[ov(0, 0, 0, Some(CellValue::Number(45000.0)))],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should work");
@@ -3334,8 +3662,14 @@ mod tests {
 
         let temp = tempfile::tempdir().expect("temporary directory");
         let out = temp.path().join("dupes.xlsx");
-        let outcome = write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
-            .expect("xlsx export should work");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
         assert_eq!(outcome.applied, 2);
         let actual = read_xlsx(&out);
         let cells = cells_by_position(&actual, 0);
@@ -3352,13 +3686,20 @@ mod tests {
 
         let unknown_sheet = [ov(5, 0, 0, Some(CellValue::Number(1.0)))];
         for error in [
-            write_xlsx_with_overrides(&store, &temp.path().join("a.xlsx"), &unknown_sheet, &cancel)
-                .unwrap_err(),
+            write_xlsx_with_overrides(
+                &store,
+                &temp.path().join("a.xlsx"),
+                &unknown_sheet,
+                &SizeOverrides::default(),
+                &cancel,
+            )
+            .unwrap_err(),
             write_csv_with_overrides(
                 &store,
                 0,
                 &temp.path().join("a.csv"),
                 &unknown_sheet,
+                &SizeOverrides::default(),
                 &cancel,
             )
             .unwrap_err(),
@@ -3370,15 +3711,28 @@ mod tests {
         let over_cap = (0..u32::try_from(EXPORT_OVERRIDES_CAP).unwrap() + 1)
             .map(|index| ov(0, 0, index % 3, Some(CellValue::Number(1.0))))
             .collect::<Vec<_>>();
-        let error =
-            write_csv_with_overrides(&store, 0, &temp.path().join("b.csv"), &over_cap, &cancel)
-                .unwrap_err();
+        let error = write_csv_with_overrides(
+            &store,
+            0,
+            &temp.path().join("b.csv"),
+            &over_cap,
+            &SizeOverrides::default(),
+            &cancel,
+        )
+        .unwrap_err();
         assert_eq!(error.code, "bad_request");
         assert!(error.msg.contains("100000-entry cap"), "{}", error.msg);
 
         let bomb = [ov(0, 9_000_000, 0, Some(CellValue::Number(1.0)))];
-        let error = write_csv_with_overrides(&store, 0, &temp.path().join("c.csv"), &bomb, &cancel)
-            .unwrap_err();
+        let error = write_csv_with_overrides(
+            &store,
+            0,
+            &temp.path().join("c.csv"),
+            &bomb,
+            &SizeOverrides::default(),
+            &cancel,
+        )
+        .unwrap_err();
         assert_eq!(error.code, "bomb");
         assert!(error.msg.contains("8000000 cell limit"), "{}", error.msg);
 
@@ -3386,6 +3740,7 @@ mod tests {
             &store,
             &temp.path().join("d.xlsx"),
             &[ov(0, 1_048_576, 0, Some(CellValue::Number(1.0)))],
+            &SizeOverrides::default(),
             &cancel,
         )
         .unwrap_err();
@@ -3396,6 +3751,7 @@ mod tests {
             &store,
             &temp.path().join("e.xlsx"),
             &[ov(0, 0, 16_384, Some(CellValue::Number(1.0)))],
+            &SizeOverrides::default(),
             &cancel,
         )
         .unwrap_err();
@@ -3404,10 +3760,23 @@ mod tests {
 
         let non_finite = [ov(0, 0, 0, Some(CellValue::Number(f64::NAN)))];
         for error in [
-            write_xlsx_with_overrides(&store, &temp.path().join("f.xlsx"), &non_finite, &cancel)
-                .unwrap_err(),
-            write_csv_with_overrides(&store, 0, &temp.path().join("f.csv"), &non_finite, &cancel)
-                .unwrap_err(),
+            write_xlsx_with_overrides(
+                &store,
+                &temp.path().join("f.xlsx"),
+                &non_finite,
+                &SizeOverrides::default(),
+                &cancel,
+            )
+            .unwrap_err(),
+            write_csv_with_overrides(
+                &store,
+                0,
+                &temp.path().join("f.csv"),
+                &non_finite,
+                &SizeOverrides::default(),
+                &cancel,
+            )
+            .unwrap_err(),
         ] {
             assert_eq!(error.code, "bad_request");
             assert!(error.msg.contains("finite"), "{}", error.msg);
@@ -3455,6 +3824,7 @@ mod tests {
             0,
             &temp.path().join("grown.csv"),
             &[ov(0, 9_000_000, 0, Some(CellValue::Number(2.0)))],
+            &SizeOverrides::default(),
             &cancel,
         )
         .unwrap_err();
@@ -3477,18 +3847,30 @@ mod tests {
         ];
         let temp = tempfile::tempdir().expect("temporary directory");
         let out = temp.path().join("sheet0.csv");
-        let outcome =
-            write_csv_with_overrides(&store, 0, &out, &overrides, &AtomicBool::new(false))
-                .expect("csv export should work");
+        let outcome = write_csv_with_overrides(
+            &store,
+            0,
+            &out,
+            &overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("csv export should work");
         assert_eq!(outcome.applied, 1);
         assert_eq!(
             std::fs::read_to_string(&out).expect("csv should be readable"),
             "first\r\n"
         );
         let out = temp.path().join("sheet1.csv");
-        let outcome =
-            write_csv_with_overrides(&store, 1, &out, &overrides, &AtomicBool::new(false))
-                .expect("csv export should work");
+        let outcome = write_csv_with_overrides(
+            &store,
+            1,
+            &out,
+            &overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("csv export should work");
         assert_eq!(outcome.applied, 1);
         assert_eq!(
             std::fs::read_to_string(&out).expect("csv should be readable"),
@@ -3496,8 +3878,14 @@ mod tests {
         );
         // xlsx applies the whole edit set.
         let out = temp.path().join("both.xlsx");
-        let outcome = write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
-            .expect("xlsx export should work");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
         assert_eq!(outcome.applied, 2);
         let actual = read_xlsx(&out);
         assert_eq!(
@@ -3521,6 +3909,7 @@ mod tests {
             &store,
             &out,
             &[ov(0, 0, 0, Some(CellValue::Text("=SUM(A1:A2)".to_owned())))],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should work");
@@ -3592,8 +3981,14 @@ mod tests {
             ov(0, 0, 0, Some(CellValue::Number(30.0))),
             ov(0, 0, 1, Some(CellValue::Number(40.0))),
         ];
-        let outcome = write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
-            .expect("xlsx export should work");
+        let outcome = write_xlsx_with_overrides(
+            &store,
+            &out,
+            &overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
         assert!(
             outcome
                 .dropped
@@ -3667,6 +4062,7 @@ mod tests {
             // The second entry clears a cell that holds nothing:
             // a no-op that is still accepted and counted.
             &[ov(0, 0, 0, None), ov(0, 1, 0, None)],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should work");
@@ -3713,8 +4109,14 @@ mod tests {
 
         let temp = tempfile::tempdir().expect("temporary directory");
         let out = temp.path().join("extended.xlsx");
-        write_xlsx_with_overrides(&store, &out, &overrides, &AtomicBool::new(false))
-            .expect("xlsx export should work");
+        write_xlsx_with_overrides(
+            &store,
+            &out,
+            &overrides,
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("xlsx export should work");
         let actual = read_xlsx(&out);
         assert_eq!(actual.sheets[0].rows, 5);
         assert_eq!(actual.sheets[0].cols, 4);
@@ -3766,6 +4168,7 @@ mod tests {
             &store,
             &out,
             &[ov(0, 0, 0, Some(CellValue::Text(oversized)))],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should succeed despite the oversized string");
@@ -3816,6 +4219,7 @@ mod tests {
                 ov(0, 0, 0, Some(CellValue::Text("edited".to_owned()))),
                 ov(0, 1, 1, Some(CellValue::Text("corner".to_owned()))),
             ],
+            &SizeOverrides::default(),
             &AtomicBool::new(false),
         )
         .expect("xlsx export should work");

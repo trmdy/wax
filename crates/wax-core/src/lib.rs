@@ -38,6 +38,41 @@ pub struct CellOverride {
     pub v: Option<CellValue>,
 }
 
+/// Column and row size edits layered over the read model at export time
+/// (v0.3 `exportSizeOverrides`). Indices are zero-based absolute; widths
+/// are Excel character units, heights are points; duplicates collapse
+/// last-wins per column/row. The combined entry count shares the
+/// [`EXPORT_OVERRIDES_CAP`] rail.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SizeOverrides {
+    pub cols: Vec<ColSizeOverride>,
+    pub rows: Vec<RowSizeOverride>,
+}
+
+impl SizeOverrides {
+    pub fn len(&self) -> usize {
+        self.cols.len().saturating_add(self.rows.len())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cols.is_empty() && self.rows.is_empty()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColSizeOverride {
+    pub sheet: u32,
+    pub c: u32,
+    pub width: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowSizeOverride {
+    pub sheet: u32,
+    pub r: u32,
+    pub height: f64,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Cell {
     pub r: u32,

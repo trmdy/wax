@@ -136,6 +136,57 @@ fn open_and_meta_carry_declared_sizes_and_resolved_defaults() {
 }
 
 #[test]
+fn export_applies_size_overrides_and_reopen_shows_them() {
+    let fixture = fixture_path().with_file_name("sizes.xlsx");
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let out = temp.path().join("resized.xlsx");
+    let mut server = Server::start(&[]);
+    let opened = open_path(&mut server, 50, &fixture);
+
+    server.send(json!({
+        "id":51,"op":"export","handle":opened["handle"],"format":"xlsx","out":out,
+        "sizeOverrides":{
+            "cols":[{"sheet":0,"c":1,"width":33.75},{"sheet":0,"c":4,"width":12.5}],
+            "rows":[{"sheet":0,"r":0,"height":50.1}]
+        }
+    }));
+    let exported = server.receive();
+    assert_eq!(exported["ok"], true, "{exported}");
+
+    let reopened = open_path(&mut server, 52, &out);
+    let sheet = &reopened["sheets"][0];
+    assert_eq!(
+        sheet["colInfos"],
+        json!([{"c":1,"width":33.75},{"c":4,"width":12.5}])
+    );
+    assert_eq!(
+        sheet["rowInfos"],
+        json!([
+            {"r":0,"height":50.1},
+            {"r":2,"height":30.6},
+            {"r":5,"height":45.0}
+        ])
+    );
+    assert_eq!(sheet["defaultRowHeight"], json!(14.4));
+    assert_eq!(sheet["defaultColWidth"], json!(9.14));
+
+    // Malformed size overrides answer bad_request naming the field.
+    server.send(json!({
+        "id":53,"op":"export","handle":opened["handle"],"format":"xlsx",
+        "out":temp.path().join("bad.xlsx"),
+        "sizeOverrides":{"rows":[{"sheet":0,"r":0}]}
+    }));
+    let error = server.receive();
+    assert_eq!(error["ok"], false);
+    assert_eq!(error["code"], "bad_request");
+    assert_eq!(
+        error["msg"],
+        "sizeOverrides.rows[0].height must be a finite number"
+    );
+    assert!(server.eof().success());
+}
+
+#[test]
 fn version_handshake_and_eof_exit_zero() {
     let mut server = Server::start(&[]);
     server.send(json!({"id": 1, "op": "version"}));
@@ -147,7 +198,7 @@ fn version_handshake_and_eof_exit_zero() {
             "ok": true,
             "proto": 0,
             "version": env!("CARGO_PKG_VERSION"),
-            "caps": ["exportOverrides", "sheetSizeInfos"],
+            "caps": ["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"],
         })
     );
     assert!(server.eof().success());
@@ -158,7 +209,10 @@ fn open_meta_window_close_happy_path() {
     let mut server = Server::start(&[]);
     let opened = open(&mut server, 10);
     assert_eq!(opened["proto"], 0);
-    assert_eq!(opened["caps"], json!(["exportOverrides", "sheetSizeInfos"]));
+    assert_eq!(
+        opened["caps"],
+        json!(["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"])
+    );
     assert_eq!(opened["handle"], "h1");
     assert_eq!(opened["truncated"], false);
     // The sheetSizeInfos contract: all four size fields always present,

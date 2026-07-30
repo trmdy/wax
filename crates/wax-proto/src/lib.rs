@@ -2,7 +2,10 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use wax_core::{CellOverride, CellType, CellValue, ColInfo, RowInfo, EXPORT_OVERRIDES_CAP};
+use wax_core::{
+    CellOverride, CellType, CellValue, ColInfo, ColSizeOverride, RowInfo, RowSizeOverride,
+    SizeOverrides, EXPORT_OVERRIDES_CAP,
+};
 
 pub const PROTO_VERSION: u32 = 0;
 
@@ -14,6 +17,11 @@ pub const CAP_EXPORT_OVERRIDES: &str = "exportOverrides";
 /// `open`/`meta` sheet entry; contract pinned at apiary wave/sheet-p2.5).
 pub const CAP_SHEET_SIZE_INFOS: &str = "sheetSizeInfos";
 
+/// Capability string advertising the v0.3 export `sizeOverrides` field
+/// (column-width/row-height edits applied at export time). Gated
+/// separately from `sheetSizeInfos` per the pinned contract.
+pub const CAP_EXPORT_SIZE_OVERRIDES: &str = "exportSizeOverrides";
+
 /// Every capability this server advertises on `version` and `open`
 /// responses. Additive — absence of `caps` means no capabilities; the
 /// `--version` line never carries capabilities (release-workflow contract).
@@ -21,6 +29,7 @@ pub fn server_caps() -> Vec<String> {
     vec![
         CAP_EXPORT_OVERRIDES.to_owned(),
         CAP_SHEET_SIZE_INFOS.to_owned(),
+        CAP_EXPORT_SIZE_OVERRIDES.to_owned(),
     ]
 }
 pub const SERVE_DEFAULT_MAX_CELLS: u64 = 5_000_000;
@@ -111,6 +120,7 @@ pub enum Request {
         out: String,
         sheet: u32,
         overrides: Vec<CellOverride>,
+        size_overrides: SizeOverrides,
     },
     Close {
         id: u64,
@@ -214,6 +224,11 @@ pub fn parse_request(line: &str) -> Result<Request, RequestError> {
                 Some(value) => parse_overrides(value)
                     .map_err(|message| RequestError::new(Some(id), message))?,
             },
+            size_overrides: match object.get("sizeOverrides") {
+                None => SizeOverrides::default(),
+                Some(value) => parse_size_overrides(value)
+                    .map_err(|message| RequestError::new(Some(id), message))?,
+            },
         }),
         "close" => Ok(Request::Close {
             id,
@@ -285,6 +300,83 @@ pub fn parse_overrides(value: &Value) -> Result<Vec<CellOverride>, String> {
             })
         })
         .collect()
+}
+
+/// Parse an export `sizeOverrides` value: an object with optional `cols`
+/// (`[{sheet, c, width}]`) and `rows` (`[{sheet, r, height}]`) arrays.
+/// Indices are zero-based u32; widths are character units and heights are
+/// points, both finite numbers (the writer clamps out-of-range values
+/// loudly). The combined entry count shares the cell-override cap. Errors
+/// are `bad_request`-grade messages naming the cap or the offending field.
+pub fn parse_size_overrides(value: &Value) -> Result<SizeOverrides, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "sizeOverrides must be an object".to_owned())?;
+    for key in object.keys() {
+        if key != "cols" && key != "rows" {
+            return Err(format!("sizeOverrides has unknown field {key:?}"));
+        }
+    }
+    let entries = |key: &str| -> Result<&[Value], String> {
+        match object.get(key) {
+            None => Ok(&[]),
+            Some(value) => value
+                .as_array()
+                .map(Vec::as_slice)
+                .ok_or_else(|| format!("sizeOverrides.{key} must be an array")),
+        }
+    };
+    let cols = entries("cols")?;
+    let rows = entries("rows")?;
+    if cols.len().saturating_add(rows.len()) > EXPORT_OVERRIDES_CAP {
+        return Err(format!(
+            "sizeOverrides length {} exceeds the {EXPORT_OVERRIDES_CAP}-entry cap",
+            cols.len().saturating_add(rows.len())
+        ));
+    }
+
+    let field_u32 = |entry: &Value, key: &str, field: &str, index: usize| -> Result<u32, String> {
+        entry
+            .as_object()
+            .and_then(|object| object.get(field))
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| format!("sizeOverrides.{key}[{index}].{field} must be a u32"))
+    };
+    let field_f64 = |entry: &Value, key: &str, field: &str, index: usize| -> Result<f64, String> {
+        entry
+            .as_object()
+            .ok_or_else(|| format!("sizeOverrides.{key}[{index}] must be an object"))?
+            .get(field)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+            .ok_or_else(|| format!("sizeOverrides.{key}[{index}].{field} must be a finite number"))
+    };
+
+    Ok(SizeOverrides {
+        cols: cols
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                Ok(ColSizeOverride {
+                    width: field_f64(entry, "cols", "width", index)?,
+                    sheet: field_u32(entry, "cols", "sheet", index)?,
+                    c: field_u32(entry, "cols", "c", index)?,
+                })
+            })
+            .collect::<Result<_, String>>()?,
+        rows: rows
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                Ok(RowSizeOverride {
+                    height: field_f64(entry, "rows", "height", index)?,
+                    sheet: field_u32(entry, "rows", "sheet", index)?,
+                    r: field_u32(entry, "rows", "r", index)?,
+                })
+            })
+            .collect::<Result<_, String>>()?,
+    })
 }
 
 fn required_string<'a>(
@@ -702,10 +794,107 @@ mod tests {
     }
 
     #[test]
+    fn export_size_overrides_parse_and_reject_malformed_fields() {
+        let request = parse_request(
+            r#"{"id":7,"op":"export","handle":"h1","format":"xlsx","out":"/tmp/x.xlsx",
+                "sizeOverrides":{
+                    "cols":[{"sheet":0,"c":2,"width":24.5}],
+                    "rows":[{"sheet":1,"r":9,"height":30.6}]
+                }}"#,
+        )
+        .expect("request should parse");
+        let Request::Export { size_overrides, .. } = request else {
+            panic!("expected export request");
+        };
+        assert_eq!(
+            size_overrides,
+            SizeOverrides {
+                cols: vec![ColSizeOverride {
+                    sheet: 0,
+                    c: 2,
+                    width: 24.5,
+                }],
+                rows: vec![RowSizeOverride {
+                    sheet: 1,
+                    r: 9,
+                    height: 30.6,
+                }],
+            }
+        );
+
+        let request = parse_request(
+            r#"{"id":8,"op":"export","handle":"h1","format":"xlsx","out":"/tmp/x.xlsx"}"#,
+        )
+        .expect("request should parse");
+        let Request::Export { size_overrides, .. } = request else {
+            panic!("expected export request");
+        };
+        assert!(size_overrides.is_empty());
+
+        for (payload, expected) in [
+            (r#""sizeOverrides":[]"#, "sizeOverrides must be an object"),
+            (
+                r#""sizeOverrides":{"widths":[]}"#,
+                "sizeOverrides has unknown field \"widths\"",
+            ),
+            (
+                r#""sizeOverrides":{"cols":{}}"#,
+                "sizeOverrides.cols must be an array",
+            ),
+            (
+                r#""sizeOverrides":{"cols":[7]}"#,
+                "sizeOverrides.cols[0] must be an object",
+            ),
+            (
+                r#""sizeOverrides":{"cols":[{"sheet":0,"c":1}]}"#,
+                "sizeOverrides.cols[0].width must be a finite number",
+            ),
+            (
+                r#""sizeOverrides":{"cols":[{"sheet":0,"c":1,"width":"9"}]}"#,
+                "sizeOverrides.cols[0].width must be a finite number",
+            ),
+            (
+                r#""sizeOverrides":{"rows":[{"sheet":0,"r":-1,"height":9}]}"#,
+                "sizeOverrides.rows[0].r must be a u32",
+            ),
+            (
+                r#""sizeOverrides":{"rows":[{"r":0,"height":9}]}"#,
+                "sizeOverrides.rows[0].sheet must be a u32",
+            ),
+        ] {
+            let line = format!(
+                r#"{{"id":3,"op":"export","handle":"h1","format":"xlsx","out":"/tmp/x.xlsx",{payload}}}"#
+            );
+            let error = parse_request(&line).expect_err("request should fail");
+            assert_eq!(error.msg, expected, "{payload}");
+        }
+    }
+
+    #[test]
+    fn export_size_overrides_share_the_overrides_cap() {
+        let cols = (0..60_000)
+            .map(|_| serde_json::json!({"sheet":0,"c":0,"width":9}))
+            .collect::<Vec<_>>();
+        let rows = (0..40_001)
+            .map(|_| serde_json::json!({"sheet":0,"r":0,"height":15}))
+            .collect::<Vec<_>>();
+        let error = parse_size_overrides(&serde_json::json!({"cols": cols, "rows": rows}))
+            .expect_err("over-cap size overrides should fail");
+        assert_eq!(
+            error,
+            "sizeOverrides length 100001 exceeds the 100000-entry cap"
+        );
+    }
+
+    #[test]
     fn caps_are_advertised_on_version_and_open_responses_only() {
         assert_eq!(
             server_caps(),
-            vec!["exportOverrides".to_owned(), "sheetSizeInfos".to_owned()]
+            vec![
+                "exportOverrides".to_owned(),
+                "sheetSizeInfos".to_owned(),
+                "exportSizeOverrides".to_owned()
+            ]
         );
         let version = serde_json::to_value(VersionResponse {
             id: 1,
@@ -717,7 +906,7 @@ mod tests {
         .expect("version response should serialize");
         assert_eq!(
             version["caps"],
-            serde_json::json!(["exportOverrides", "sheetSizeInfos"])
+            serde_json::json!(["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"])
         );
         let open = serde_json::to_value(OpenResponse {
             id: 2,
@@ -732,7 +921,7 @@ mod tests {
         .expect("open response should serialize");
         assert_eq!(
             open["caps"],
-            serde_json::json!(["exportOverrides", "sheetSizeInfos"])
+            serde_json::json!(["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"])
         );
     }
 
