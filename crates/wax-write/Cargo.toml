@@ -9,6 +9,7 @@ quick-xml.workspace = true
 rust_xlsxwriter.workspace = true
 tempfile.workspace = true
 wax-core = { path = "../wax-core" }
+wax-fmt = { path = "../wax-fmt" }
 wax-store = { path = "../wax-store" }
 zip.workspace = true
 

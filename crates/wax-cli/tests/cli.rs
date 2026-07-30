@@ -31,9 +31,11 @@ fn version_includes_semver_and_protocol() {
     let output = wax().arg("--version").output().expect("wax should execute");
 
     assert!(output.status.success());
+    // The release workflow validates this exact shape (`^wax <semver>
+    // \(proto <n>\)$`); capabilities must never be added to this line.
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "wax 0.1.0 (proto 0)\n"
+        format!("wax {} (proto 0)\n", env!("CARGO_PKG_VERSION"))
     );
     assert!(output.stderr.is_empty());
 }
@@ -54,7 +56,7 @@ fn dump_emits_normalized_json_and_metrics() {
         serde_json::from_slice(&output.stdout).expect("stdout should contain JSON");
     assert_eq!(dump["schema"], 1);
     assert_eq!(dump["tool"], "wax");
-    assert_eq!(dump["toolVersion"], "0.1.0");
+    assert_eq!(dump["toolVersion"], env!("CARGO_PKG_VERSION"));
     assert_eq!(dump["ok"], true);
     assert_eq!(dump["truncated"], true);
     assert_eq!(dump["sheets"][0]["cells"].as_array().unwrap().len(), 2);
@@ -118,7 +120,7 @@ fn help_includes_export_usage() {
     assert!(output.stderr.is_empty());
     assert!(String::from_utf8_lossy(&output.stdout).contains(
         "wax export --json <in> <out> --format xlsx|csv [--sheet N] \
-[--max-cells N] [--max-bytes N] [--timeout-ms N]"
+[--overrides <json-file>] [--max-cells N] [--max-bytes N] [--timeout-ms N]"
     ));
 }
 
@@ -212,6 +214,46 @@ fn export_rejects_invalid_format_and_sheet_as_usage_errors() {
         assert!(output.stdout.is_empty());
         assert!(!output.stderr.is_empty());
     }
+}
+
+#[test]
+fn export_overrides_file_applies_edits_and_reports_the_count() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let output_path = temp.path().join("edited.csv");
+    let overrides_path = temp.path().join("overrides.json");
+    std::fs::write(
+        &overrides_path,
+        r#"[{"sheet":0,"r":0,"c":0,"v":"edited"},{"sheet":0,"r":0,"c":0,"v":"final"}]"#,
+    )
+    .expect("overrides file should write");
+
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(fixture_path())
+        .arg(&output_path)
+        .args(["--format", "csv", "--overrides"])
+        .arg(&overrides_path)
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+    assert_eq!(result["ok"], true, "{result}");
+    assert_eq!(result["applied"], 1, "{result}");
+    let csv = std::fs::read_to_string(&output_path).expect("csv should exist");
+    assert!(csv.starts_with("final,"), "{csv}");
+
+    std::fs::write(&overrides_path, r#"[{"sheet":0,"r":0,"c":0,"v":[1]}]"#)
+        .expect("overrides file should write");
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(fixture_path())
+        .arg(temp.path().join("refused.csv"))
+        .args(["--format", "csv", "--overrides"])
+        .arg(&overrides_path)
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+    assert_eq!(result["ok"], false, "{result}");
+    assert_eq!(result["code"], "bad_request", "{result}");
 }
 
 #[test]

@@ -239,14 +239,17 @@ fn unstyled_xlsx_dump_stays_byte_identical_to_the_pre_w4_shape() {
     let json = serde_json::to_string(&document).expect("document should serialize");
     assert_eq!(
         json,
-        concat!(
-            r#"{"schema":1,"tool":"wax","toolVersion":"0.1.0","file":"unstyled.xlsx","#,
-            r#""sha256":"","ok":true,"error":null,"wallMs":0,"peakRssBytes":null,"#,
-            r#""truncated":false,"sheets":[{"name":"Plain","index":0,"rows":2,"cols":2,"#,
-            r#""truncated":false,"merges":[],"cells":[{"r":0,"c":0,"t":"n","v":42.5,"#,
-            r#""d":"42.5","f":null,"fmt":null},{"r":0,"c":1,"t":"s","v":"Plain","#,
-            r#""d":"Plain","f":null,"fmt":null},{"r":1,"c":0,"t":"b","v":true,"#,
-            r#""d":"TRUE","f":null,"fmt":null}]}],"warnings":[]}"#,
+        format!(
+            concat!(
+                r#"{{"schema":1,"tool":"wax","toolVersion":"{version}","file":"unstyled.xlsx","#,
+                r#""sha256":"","ok":true,"error":null,"wallMs":0,"peakRssBytes":null,"#,
+                r#""truncated":false,"sheets":[{{"name":"Plain","index":0,"rows":2,"cols":2,"#,
+                r#""truncated":false,"merges":[],"cells":[{{"r":0,"c":0,"t":"n","v":42.5,"#,
+                r#""d":"42.5","f":null,"fmt":null}},{{"r":0,"c":1,"t":"s","v":"Plain","#,
+                r#""d":"Plain","f":null,"fmt":null}},{{"r":1,"c":0,"t":"b","v":true,"#,
+                r#""d":"TRUE","f":null,"fmt":null}}]}}],"warnings":[]}}"#,
+            ),
+            version = env!("CARGO_PKG_VERSION")
         )
     );
 }

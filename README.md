@@ -22,7 +22,7 @@ Download `SHA256SUMS.txt` and the archive
 
 ```bash
 set -euo pipefail
-version=0.1.0
+version=0.2.0
 platform=macos-arm64
 archive="wax-v${version}-${platform}.tar.gz"
 base="https://github.com/trmdy/wax/releases/download/v${version}"
@@ -65,11 +65,15 @@ The main workbook lifecycle is:
 - `export` writes an XLSX or CSV copy and reports every dropped feature.
 - `close` releases a handle.
 
+Successful `version` and `open` responses advertise capabilities additively
+in `caps` (absence means no capabilities); the `--version` line never
+carries them. The current server advertises `caps:["exportOverrides"]`.
+
 This is a representative v0 session (one object per line):
 
 ```json
 {"id":1,"op":"open","path":"/absolute/path/book.xlsx","maxCells":5000000,"maxBytes":104857600,"timeoutMs":30000}
-{"id":1,"ok":true,"proto":0,"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false}],"warnings":[]}
+{"id":1,"ok":true,"proto":0,"caps":["exportOverrides"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false}],"warnings":[]}
 {"id":2,"op":"window","handle":"h1","sheet":0,"r0":0,"c0":0,"nr":2,"nc":2}
 {"id":2,"ok":true,"sheet":0,"r0":0,"c0":0,"nr":2,"nc":2,"rows":[[{"t":"s","v":"Item","d":"Item"},{"t":"s","v":"Cost","d":"Cost"}],[{"t":"s","v":"Tea","d":"Tea"},{"t":"n","v":12.5,"d":"12.50"}]],"merges":[]}
 {"id":3,"op":"close","handle":"h1"}
@@ -80,6 +84,20 @@ An `open` defaults to 5,000,000 cells, 100 MiB input, and a 30-second
 wall-clock timeout. A `window` is capped at 262,144 requested cells; the
 server defaults to 16 handles with a five-minute idle timeout. Limits and
 reader safety rails fail loudly or mark a result as truncated.
+
+An `export` optionally carries `overrides` — an array of up to 100,000
+`{"sheet":0,"r":1,"c":2,"v":42.5}` edits (zero-based absolute indices)
+layered over the read model before the writer runs; the store itself is
+never mutated. `v` is a JSON number, string, boolean, or `null` (clear).
+Strings beginning with `=` stay text, numbers are never coerced to dates
+(the retained format code carries date semantics), an overridden cell keeps
+its style and format code and gets its display string re-rendered, an
+overridden formula cell drops the formula loudly in `dropped`, duplicates
+are last-wins, and the response reports the post-collapse count in
+`applied`. Overrides may extend the used extent, subject to the extent/bomb
+caps. `format:"csv"` accepts the same field, applies only the exported
+sheet's overrides, and ignores edits for other (valid) sheets. The same
+edits work offline via `wax export --overrides <json-file>`.
 
 Send `{"id":9,"op":"cancel","target":2}` to request cooperative cancellation
 of in-flight request 2. Errors always use

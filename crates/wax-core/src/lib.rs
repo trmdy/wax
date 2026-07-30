@@ -20,6 +20,24 @@ pub enum CellValue {
     Bool(bool),
 }
 
+/// Maximum number of entries an export `overrides` array may carry
+/// (v0.2 export-with-overrides contract). Breaching it is `bad_request`
+/// naming the cap.
+pub const EXPORT_OVERRIDES_CAP: usize = 100_000;
+
+/// One edited cell layered over the read model at export time
+/// (`docs/v0.2-overrides-contract.md`). Indices are zero-based absolute;
+/// `v: None` clears the cell. Strings are always stored as text (a leading
+/// `=` is never reinterpreted as a formula) and numbers are never coerced
+/// to dates — the retained format code carries date semantics.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CellOverride {
+    pub sheet: u32,
+    pub r: u32,
+    pub c: u32,
+    pub v: Option<CellValue>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Cell {
     pub r: u32,

@@ -18,7 +18,7 @@ mod serve;
 const USAGE: &str = "Usage:
   wax --version
   wax dump --json <file> [--max-cells N] [--max-bytes N] [--timeout-ms N]
-  wax export --json <in> <out> --format xlsx|csv [--sheet N] [--max-cells N] [--max-bytes N] [--timeout-ms N]
+  wax export --json <in> <out> --format xlsx|csv [--sheet N] [--overrides <json-file>] [--max-cells N] [--max-bytes N] [--timeout-ms N]
   wax serve [--idle-timeout-ms N] [--max-handles N]";
 
 fn main() -> ExitCode {
@@ -129,6 +129,20 @@ fn run_export(command: ExportCommand) -> i32 {
         }));
     }
 
+    let overrides = match &command.overrides {
+        None => Vec::new(),
+        Some(path) => match load_overrides(path) {
+            Ok(overrides) => overrides,
+            Err((code, msg)) => {
+                return write_export_json(json!({
+                    "ok": false,
+                    "code": code,
+                    "msg": msg,
+                }))
+            }
+        },
+    };
+
     let warnings = document.warnings.clone();
     let store = WorkbookStore::from_document(document);
     if store.sheet_meta(command.sheet).is_none() {
@@ -141,8 +155,16 @@ fn run_export(command: ExportCommand) -> i32 {
 
     let cancel = AtomicBool::new(false);
     let result = match command.format {
-        ExportFormat::Xlsx => wax_write::write_xlsx(&store, &command.output, &cancel),
-        ExportFormat::Csv => wax_write::write_csv(&store, command.sheet, &command.output, &cancel),
+        ExportFormat::Xlsx => {
+            wax_write::write_xlsx_with_overrides(&store, &command.output, &overrides, &cancel)
+        }
+        ExportFormat::Csv => wax_write::write_csv_with_overrides(
+            &store,
+            command.sheet,
+            &command.output,
+            &overrides,
+            &cancel,
+        ),
     };
     match result {
         Ok(mut outcome) => {
@@ -150,6 +172,7 @@ fn run_export(command: ExportCommand) -> i32 {
             write_export_json(json!({
                 "ok": true,
                 "bytes": outcome.bytes,
+                "applied": outcome.applied,
                 "dropped": outcome.dropped,
             }))
         }
@@ -159,6 +182,27 @@ fn run_export(command: ExportCommand) -> i32 {
             "msg": error.msg,
         })),
     }
+}
+
+/// Load an overrides JSON file (an array of `{sheet, r, c, v}` objects, the
+/// same shape the serve `export` op accepts).
+fn load_overrides(path: &Path) -> Result<Vec<wax_core::CellOverride>, (String, String)> {
+    let raw = std::fs::read_to_string(path).map_err(|error| {
+        (
+            "bad_request".to_owned(),
+            format!("could not read overrides file {}: {error}", path.display()),
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
+        (
+            "bad_request".to_owned(),
+            format!(
+                "overrides file {} is not valid JSON: {error}",
+                path.display()
+            ),
+        )
+    })?;
+    wax_proto::parse_overrides(&value).map_err(|msg| ("bad_request".to_owned(), msg))
 }
 
 fn write_export_json(value: serde_json::Value) -> i32 {
@@ -200,6 +244,7 @@ struct ExportCommand {
     output: PathBuf,
     format: ExportFormat,
     sheet: u32,
+    overrides: Option<PathBuf>,
     max_cells: usize,
     max_bytes: u64,
     timeout_ms: u64,
@@ -272,6 +317,7 @@ fn parse_export_arguments(arguments: &[OsString]) -> Result<ExportCommand, Strin
     let mut paths = Vec::with_capacity(2);
     let mut format = None;
     let mut sheet = 0;
+    let mut overrides = None;
     let mut max_cells = ReaderOptions::default().max_cells;
     let mut max_bytes = ReaderOptions::default().max_bytes;
     let mut timeout_ms = ReaderOptions::default().timeout_ms;
@@ -301,6 +347,13 @@ fn parse_export_arguments(arguments: &[OsString]) -> Result<ExportCommand, Strin
                     .get(index)
                     .ok_or_else(|| "wax: --sheet requires a value".to_owned())?;
                 sheet = parse_number(value, "--sheet")?;
+            }
+            Some("--overrides") => {
+                index += 1;
+                let value = arguments
+                    .get(index)
+                    .ok_or_else(|| "wax: --overrides requires a file path".to_owned())?;
+                overrides = Some(PathBuf::from(value));
             }
             Some("--max-cells") => {
                 index += 1;
@@ -344,6 +397,7 @@ fn parse_export_arguments(arguments: &[OsString]) -> Result<ExportCommand, Strin
         output: paths.remove(0),
         format,
         sheet,
+        overrides,
         max_cells,
         max_bytes,
         timeout_ms,
