@@ -155,14 +155,19 @@ fn run_export(command: ExportCommand) -> i32 {
 
     let cancel = AtomicBool::new(false);
     let result = match command.format {
-        ExportFormat::Xlsx => {
-            wax_write::write_xlsx_with_overrides(&store, &command.output, &overrides, &cancel)
-        }
+        ExportFormat::Xlsx => wax_write::write_xlsx_with_overrides(
+            &store,
+            &command.output,
+            &overrides,
+            &wax_core::SizeOverrides::default(),
+            &cancel,
+        ),
         ExportFormat::Csv => wax_write::write_csv_with_overrides(
             &store,
             command.sheet,
             &command.output,
             &overrides,
+            &wax_core::SizeOverrides::default(),
             &cancel,
         ),
     };

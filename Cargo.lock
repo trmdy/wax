@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "wax-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "serde_json",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "wax-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -871,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "wax-fmt"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "wax-proto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "wax-read"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "calamine",
  "cfb",
@@ -918,14 +918,14 @@ dependencies = [
 
 [[package]]
 name = "wax-store"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "wax-core",
 ]
 
 [[package]]
 name = "wax-write"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "quick-xml 0.38.4",
  "rust_xlsxwriter",

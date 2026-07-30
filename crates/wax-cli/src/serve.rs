@@ -13,7 +13,7 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use wax_core::CellOverride;
+use wax_core::{CellOverride, SizeOverrides};
 use wax_proto::{
     parse_request, server_caps, CancelResponse, CloseResponse, ErrorCode, ErrorResponse,
     ExportResponse, MetaResponse, OpenResponse, Request, Response, SheetSummary, StatsResponse,
@@ -492,6 +492,7 @@ fn dispatch(
             out,
             sheet,
             overrides,
+            size_overrides,
         } => {
             let handle = match state.touch(&handle) {
                 Ok(handle) => handle,
@@ -527,13 +528,19 @@ fn dispatch(
             let sender = worker_sender.clone();
             thread::spawn(move || {
                 let outcome = match format {
-                    ExportFormat::Csv => {
-                        export_csv(&handle.store, sheet, Path::new(&out), &overrides, &cancel)
-                    }
+                    ExportFormat::Csv => export_csv(
+                        &handle.store,
+                        sheet,
+                        Path::new(&out),
+                        &overrides,
+                        &size_overrides,
+                        &cancel,
+                    ),
                     ExportFormat::Xlsx => wax_write::write_xlsx_with_overrides(
                         &handle.store,
                         Path::new(&out),
                         &overrides,
+                        &size_overrides,
                         &cancel,
                     )
                     .map_err(writer_failure),
@@ -658,12 +665,25 @@ fn checkpoint(cancel: &AtomicBool) -> Result<(), Failure> {
 
 fn sheet_summaries(store: &WorkbookStore) -> Vec<SheetSummary> {
     (0..store.sheet_count())
-        .filter_map(|sheet| store.sheet_meta(sheet))
-        .map(|meta| SheetSummary {
-            name: meta.name,
-            rows: meta.rows,
-            cols: meta.cols,
-            truncated: meta.truncated,
+        .filter_map(|sheet| {
+            let meta = store.sheet_meta(sheet)?;
+            Some(SheetSummary {
+                name: meta.name,
+                rows: meta.rows,
+                cols: meta.cols,
+                truncated: meta.truncated,
+                col_infos: store.sheet_col_infos(sheet).unwrap_or_default().to_vec(),
+                row_infos: store.sheet_row_infos(sheet).unwrap_or_default().to_vec(),
+                // The sheetSizeInfos contract promises concrete defaults:
+                // container declarations when present, Excel fallbacks
+                // otherwise, so consumers never carry their own.
+                default_row_height: meta
+                    .default_row_height
+                    .unwrap_or(wax_core::DEFAULT_ROW_HEIGHT_POINTS),
+                default_col_width: meta
+                    .default_col_width
+                    .unwrap_or(wax_core::DEFAULT_COL_WIDTH_CHARS),
+            })
         })
         .collect()
 }
@@ -701,9 +721,10 @@ fn export_csv(
     sheet: u32,
     out: &Path,
     overrides: &[CellOverride],
+    sizes: &SizeOverrides,
     cancel: &AtomicBool,
 ) -> Result<ExportOutcome, Failure> {
-    wax_write::write_csv_with_overrides(store, sheet, out, overrides, cancel)
+    wax_write::write_csv_with_overrides(store, sheet, out, overrides, sizes, cancel)
         .map_err(writer_failure)
 }
 
@@ -769,6 +790,9 @@ mod tests {
             "test.xlsx",
             vec![Sheet {
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows: 1,
@@ -795,7 +819,15 @@ mod tests {
         });
         let temp = tempfile::tempdir().expect("temp directory");
         let out = temp.path().join("quoted.csv");
-        export_csv(&store, 0, &out, &[], &AtomicBool::new(false)).expect("export should work");
+        export_csv(
+            &store,
+            0,
+            &out,
+            &[],
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("export should work");
         assert_eq!(
             std::fs::read(&out).expect("csv should be readable"),
             b"\"say \"\"hello\"\",\nfriend\"\r\n"
@@ -809,6 +841,9 @@ mod tests {
             "test.xlsx",
             vec![Sheet {
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
                 name: "Sheet1".to_owned(),
                 index: 0,
                 rows: 1,
@@ -852,7 +887,15 @@ mod tests {
         ));
         let temp = tempfile::tempdir().expect("temp directory");
         let out = temp.path().join("raw.csv");
-        export_csv(&store, 0, &out, &[], &AtomicBool::new(false)).expect("export should work");
+        export_csv(
+            &store,
+            0,
+            &out,
+            &[],
+            &SizeOverrides::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("export should work");
         assert_eq!(
             std::fs::read(&out).expect("csv should be readable"),
             b"1.25,FALSE,\r\n"
@@ -882,8 +925,15 @@ mod tests {
         });
         let temp = tempfile::tempdir().expect("temp directory");
         let out = temp.path().join("cancelled.csv");
-        let error = export_csv(&store, 0, &out, &[], &AtomicBool::new(true))
-            .expect_err("cancelled export should fail");
+        let error = export_csv(
+            &store,
+            0,
+            &out,
+            &[],
+            &SizeOverrides::default(),
+            &AtomicBool::new(true),
+        )
+        .expect_err("cancelled export should fail");
         assert_eq!(error.code, ErrorCode::Cancelled);
         assert!(!out.exists(), "cancelled export left an output file");
     }

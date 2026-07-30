@@ -22,7 +22,7 @@ Download `SHA256SUMS.txt` and the archive
 
 ```bash
 set -euo pipefail
-version=0.2.0
+version=0.3.0
 platform=macos-arm64
 archive="wax-v${version}-${platform}.tar.gz"
 base="https://github.com/trmdy/wax/releases/download/v${version}"
@@ -35,7 +35,7 @@ tar -xzf "$archive" -C "wax-v${version}"
 "wax-v${version}/wax" --version
 ```
 
-The final command prints `wax 0.1.0 (proto 0)` for the v0.1.0 release. Move
+The final command prints `wax 0.3.0 (proto 0)` for the v0.3.0 release. Move
 the binary to a directory on `PATH` if desired.
 
 To build instead, install Rust and run:
@@ -67,13 +67,14 @@ The main workbook lifecycle is:
 
 Successful `version` and `open` responses advertise capabilities additively
 in `caps` (absence means no capabilities); the `--version` line never
-carries them. The current server advertises `caps:["exportOverrides"]`.
+carries them. The current server advertises
+`caps:["exportOverrides","sheetSizeInfos","exportSizeOverrides"]`.
 
 This is a representative v0 session (one object per line):
 
 ```json
 {"id":1,"op":"open","path":"/absolute/path/book.xlsx","maxCells":5000000,"maxBytes":104857600,"timeoutMs":30000}
-{"id":1,"ok":true,"proto":0,"caps":["exportOverrides"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false}],"warnings":[]}
+{"id":1,"ok":true,"proto":0,"caps":["exportOverrides","sheetSizeInfos","exportSizeOverrides"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false,"colInfos":[{"c":1,"width":22.5}],"rowInfos":[{"r":0,"height":27.75}],"defaultRowHeight":15.0,"defaultColWidth":8.43}],"warnings":[]}
 {"id":2,"op":"window","handle":"h1","sheet":0,"r0":0,"c0":0,"nr":2,"nc":2}
 {"id":2,"ok":true,"sheet":0,"r0":0,"c0":0,"nr":2,"nc":2,"rows":[[{"t":"s","v":"Item","d":"Item"},{"t":"s","v":"Cost","d":"Cost"}],[{"t":"s","v":"Tea","d":"Tea"},{"t":"n","v":12.5,"d":"12.50"}]],"merges":[]}
 {"id":3,"op":"close","handle":"h1"}
@@ -98,6 +99,26 @@ are last-wins, and the response reports the post-collapse count in
 caps. `format:"csv"` accepts the same field, applies only the exported
 sheet's overrides, and ignores edits for other (valid) sheets. The same
 edits work offline via `wax export --overrides <json-file>`.
+
+Under `sheetSizeInfos`, every `open`/`meta` sheet entry always carries four
+size fields: `colInfos` (`[{c,width}]`, Excel character units, explicit
+custom widths only), `rowInfos` (`[{r,height}]`, points, any height the
+container declares — user-set or autofit-persisted), and concrete
+`defaultRowHeight`/`defaultColWidth` (container declarations when present,
+otherwise the Excel fallbacks 15.0/8.43 — consumers never need their own
+fallback). The same fields appear per sheet in `wax dump` output
+additively. xlsx, xls, and xlsb are all covered; other containers report
+empty arrays plus the fallback defaults. Exports carry sizes through
+exactly (heights, widths, and declared defaults survive a read-write-read
+loop byte-for-byte).
+
+Under `exportSizeOverrides`, an `export` optionally carries
+`sizeOverrides:{"cols":[{"sheet":0,"c":1,"width":24.5}],"rows":[{"sheet":0,
+"r":0,"height":30.0}]}` (same zero-based indices and units): entries
+collapse last-wins, layer over the source's declared sizes, clamp loudly to
+0..=255 chars / 0..=409.5 points, and share the 100,000-entry cap with cell
+overrides. csv exports drop size overrides loudly with a counted `dropped`
+entry scoped to the exported sheet.
 
 Send `{"id":9,"op":"cancel","target":2}` to request cooperative cancellation
 of in-flight request 2. Errors always use

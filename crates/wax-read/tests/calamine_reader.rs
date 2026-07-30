@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use tempfile::NamedTempFile;
-use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo};
+use wax_core::{Cell, CellStyle, CellType, CellValue, ColInfo, RowInfo};
 use wax_fmt::{render, FmtValue};
 use wax_read::{read_with_deadline, CalamineReader, Reader, ReaderOptions};
 use zip::write::SimpleFileOptions;
@@ -558,4 +558,28 @@ fn corpus_legacy_formula_empty_string_cache_is_preserved() {
             "{row}:{col}"
         );
     }
+}
+
+#[test]
+fn sizes_fixture_carries_row_heights_col_widths_and_declared_defaults() {
+    let document = CalamineReader.read(&fixture("sizes.xlsx"), ReaderOptions::default());
+    assert!(document.ok, "{:?}", document.error);
+    let sheet = &document.sheets[0];
+    assert_eq!(sheet.col_infos, vec![ColInfo { c: 1, width: 22.5 }]);
+    assert_eq!(
+        sheet.row_infos,
+        vec![
+            RowInfo {
+                r: 0,
+                height: 27.75,
+            },
+            // ht without customHeight still counts (contract amendment C).
+            RowInfo { r: 2, height: 30.6 },
+            // A self-closing resized row beyond the used extent survives
+            // via the extent headroom.
+            RowInfo { r: 5, height: 45.0 },
+        ]
+    );
+    assert_eq!(sheet.default_row_height, Some(14.4));
+    assert_eq!(sheet.default_col_width, Some(9.14));
 }

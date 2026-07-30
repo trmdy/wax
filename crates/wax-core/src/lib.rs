@@ -38,6 +38,41 @@ pub struct CellOverride {
     pub v: Option<CellValue>,
 }
 
+/// Column and row size edits layered over the read model at export time
+/// (v0.3 `exportSizeOverrides`). Indices are zero-based absolute; widths
+/// are Excel character units, heights are points; duplicates collapse
+/// last-wins per column/row. The combined entry count shares the
+/// [`EXPORT_OVERRIDES_CAP`] rail.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SizeOverrides {
+    pub cols: Vec<ColSizeOverride>,
+    pub rows: Vec<RowSizeOverride>,
+}
+
+impl SizeOverrides {
+    pub fn len(&self) -> usize {
+        self.cols.len().saturating_add(self.rows.len())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cols.is_empty() && self.rows.is_empty()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColSizeOverride {
+    pub sheet: u32,
+    pub c: u32,
+    pub width: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RowSizeOverride {
+    pub sheet: u32,
+    pub r: u32,
+    pub height: f64,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Cell {
     pub r: u32,
@@ -61,6 +96,25 @@ pub struct ColInfo {
     pub c: u32,
     pub width: f64,
 }
+
+/// Declared height for one zero-based row, in points (the `ht` attribute
+/// of a `<row>` element). Only rows whose container declares a height
+/// appear — for xlsx that is any `ht` attribute, whether user-set
+/// (`customHeight`) or an Excel-persisted autofit height, because both are
+/// the row's rendered height. Everything else uses the sheet default.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RowInfo {
+    pub r: u32,
+    pub height: f64,
+}
+
+/// Rendered row height, in points, for rows without a [`RowInfo`] entry in
+/// sheets that do not declare their own default.
+pub const DEFAULT_ROW_HEIGHT_POINTS: f64 = 15.0;
+
+/// Rendered column width, in Excel character units, for columns without a
+/// [`ColInfo`] entry in sheets that do not declare their own default.
+pub const DEFAULT_COL_WIDTH_CHARS: f64 = 8.43;
 
 /// Basic cell styling for export-a-copy fidelity. Deliberately minimal:
 /// anything richer (borders, alignment, gradients, themes) is out of the
@@ -100,6 +154,28 @@ pub struct Sheet {
     /// nothing, so pre-W4 dumps stay byte-identical.
     #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "colInfos")]
     pub col_infos: Vec<ColInfo>,
+    /// Declared row heights. Additive in schema 1 (v0.3): empty serializes
+    /// to nothing, so earlier dumps stay byte-identical.
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "rowInfos")]
+    pub row_infos: Vec<RowInfo>,
+    /// Sheet default row height in points, when the container declares one
+    /// (`sheetFormatPr defaultRowHeight` and equivalents). Additive in
+    /// schema 1 (v0.3): absent serializes to nothing.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "defaultRowHeight"
+    )]
+    pub default_row_height: Option<f64>,
+    /// Sheet default column width in Excel character units, when the
+    /// container declares one. Additive in schema 1 (v0.3): absent
+    /// serializes to nothing.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "defaultColWidth"
+    )]
+    pub default_col_width: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -212,6 +288,9 @@ mod tests {
                     s: None,
                 }],
                 col_infos: Vec::new(),
+                row_infos: Vec::new(),
+                default_row_height: None,
+                default_col_width: None,
             }],
             warnings: Vec::new(),
             styles: Vec::new(),
@@ -249,10 +328,19 @@ mod tests {
         }];
         expected.sheets[0].cells[0].s = Some(0);
         expected.sheets[0].col_infos = vec![ColInfo { c: 2, width: 17.25 }];
+        expected.sheets[0].row_infos = vec![RowInfo {
+            r: 4,
+            height: 27.75,
+        }];
+        expected.sheets[0].default_row_height = Some(14.4);
+        expected.sheets[0].default_col_width = Some(8.43);
 
         let json = serde_json::to_string(&expected).expect("document should serialize");
         assert!(json.contains(r#""s":0"#));
         assert!(json.contains(r#""colInfos":[{"c":2,"width":17.25}]"#));
+        assert!(json.contains(r#""rowInfos":[{"r":4,"height":27.75}]"#));
+        assert!(json.contains(r#""defaultRowHeight":14.4"#));
+        assert!(json.contains(r#""defaultColWidth":8.43"#));
         assert!(
             json.contains(r##""styles":[{"bold":true,"fontSize":11.0,"fillColor":"#FFCC00"}]"##)
         );

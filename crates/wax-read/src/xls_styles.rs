@@ -5,15 +5,22 @@ use std::path::Path;
 use codepage::to_encoding;
 use encoding_rs::{Encoding, WINDOWS_1252};
 
-use super::{builtin_format, explicit_format};
+use super::{
+    builtin_format, explicit_format, ColumnDeclaration, RowDeclaration, SheetDefaults, SheetSizes,
+};
 
 type CellPosition = (u32, u32);
-type ParsedSheetStyles = (HashMap<CellPosition, String>, HashSet<CellPosition>);
+type ParsedSheetStyles = (
+    HashMap<CellPosition, String>,
+    HashSet<CellPosition>,
+    SheetSizes,
+);
 
 #[derive(Default)]
 pub(super) struct XlsStyleSupplement {
     sheets: Vec<HashMap<(u32, u32), String>>,
     empty_formula_cells: Vec<HashSet<(u32, u32)>>,
+    sizes: Vec<SheetSizes>,
 }
 
 impl XlsStyleSupplement {
@@ -46,6 +53,10 @@ impl XlsStyleSupplement {
             .get(sheet_index)
             .into_iter()
             .flatten()
+    }
+
+    pub(super) fn sizes(&self, sheet_index: usize) -> Option<&SheetSizes> {
+        self.sizes.get(sheet_index)
     }
 }
 
@@ -100,19 +111,24 @@ fn parse_workbook_stream(stream: &[u8]) -> Result<XlsStyleSupplement, String> {
         .collect::<Vec<_>>();
     let mut sheets = Vec::with_capacity(sheet_offsets.len());
     let mut empty_formula_cells = Vec::with_capacity(sheet_offsets.len());
+    let mut sizes = Vec::with_capacity(sheet_offsets.len());
     for offset in sheet_offsets {
         if offset >= stream.len() {
             sheets.push(HashMap::new());
             empty_formula_cells.push(HashSet::new());
+            sizes.push(SheetSizes::default());
             continue;
         }
-        let (styles, empty_formulas) = parse_sheet_styles(&stream[offset..], &xf_formats)?;
+        let (styles, empty_formulas, sheet_sizes) =
+            parse_sheet_styles(&stream[offset..], &xf_formats)?;
         sheets.push(styles);
         empty_formula_cells.push(empty_formulas);
+        sizes.push(sheet_sizes);
     }
     Ok(XlsStyleSupplement {
         sheets,
         empty_formula_cells,
+        sizes,
     })
 }
 
@@ -123,6 +139,13 @@ fn parse_sheet_styles(
     let mut styles = HashMap::new();
     let mut empty_formula_cells = HashSet::new();
     let mut pending_string_formula = None;
+    // Raw ROW records as (row, height in twips, fUnsynced); filtered into
+    // declarations once the sheet's default height is known.
+    let mut raw_rows = Vec::<(u32, u16, bool)>::new();
+    let mut columns = Vec::<ColumnDeclaration>::new();
+    let mut default_row_twips = None::<u16>;
+    let mut default_col_chars = None::<u16>;
+    let mut standard_width_256 = None::<u16>;
     let mut records = BiffRecordIter::new(stream);
     while let Some(record) = records.next_record()? {
         // A string FORMULA may be followed by SHRFMLA (0x04BC), ARRAY
@@ -170,6 +193,45 @@ fn parse_sheet_styles(
                     pending_string_formula = None;
                 }
             }
+            // Row ([MS-XLS] 2.4.221): rw, colMic, colMac, miyRw (twips),
+            // then two reserved shorts and a flag block whose byte 12
+            // carries fUnsynced (0x40, manually sized).
+            0x0208 if record.data.len() >= 8 => {
+                let row = u16::from_le_bytes([record.data[0], record.data[1]]) as u32;
+                let twips = u16::from_le_bytes([record.data[6], record.data[7]]) & 0x7FFF;
+                let unsynced = record.data.get(12).is_some_and(|flags| flags & 0x40 != 0);
+                raw_rows.push((row, twips, unsynced));
+            }
+            // DefaultRowHeight ([MS-XLS] 2.4.87): flags, then miyRw in twips.
+            0x0225 if record.data.len() >= 4 => {
+                default_row_twips = Some(u16::from_le_bytes([record.data[2], record.data[3]]));
+            }
+            // DefColWidth ([MS-XLS] 2.4.89): whole character units, same
+            // semantics as OOXML baseColWidth.
+            0x0055 if record.data.len() >= 2 => {
+                default_col_chars = Some(u16::from_le_bytes([record.data[0], record.data[1]]));
+            }
+            // Standardwidth ([MS-XLS] 2.4.319): 1/256 character units,
+            // padding included; overrides DefColWidth when present.
+            0x0099 if record.data.len() >= 2 => {
+                standard_width_256 = Some(u16::from_le_bytes([record.data[0], record.data[1]]));
+            }
+            // ColInfo ([MS-XLS] 2.4.53): colFirst, colLast, coldx in 1/256
+            // character units. Written only for non-default columns, so
+            // every record is an explicit declaration (1-based min/max to
+            // match the OOXML declaration shape).
+            0x007D if record.data.len() >= 6 => {
+                let first = u16::from_le_bytes([record.data[0], record.data[1]]) as u32;
+                let last = u16::from_le_bytes([record.data[2], record.data[3]]) as u32;
+                let coldx = u16::from_le_bytes([record.data[4], record.data[5]]);
+                if last >= first {
+                    columns.push(ColumnDeclaration {
+                        min: first.saturating_add(1),
+                        max: last.saturating_add(1),
+                        width: f64::from(coldx) / 256.0,
+                    });
+                }
+            }
             // MulRk: row, first column, repeated (XF, RK), last column.
             0x00BD if record.data.len() >= 12 => {
                 let row = u16::from_le_bytes([record.data[0], record.data[1]]) as u32;
@@ -189,7 +251,36 @@ fn parse_sheet_styles(
             _ => {}
         }
     }
-    Ok((styles, empty_formula_cells))
+
+    // Excel writes a Row record for every populated row with its actual
+    // height; only manually sized rows (fUnsynced) or rows differing from
+    // the sheet's declared default are size declarations in wax's model
+    // (mirroring the xlsx rule: a declared height is the rendered height).
+    let rows = raw_rows
+        .into_iter()
+        .filter(|(_, twips, unsynced)| {
+            *unsynced || default_row_twips.is_some_and(|default| *twips != default)
+        })
+        .map(|(row, twips, _)| RowDeclaration {
+            row,
+            height: f64::from(twips) / 20.0,
+        })
+        .collect();
+    let defaults = SheetDefaults {
+        row_height: default_row_twips.map(|twips| f64::from(twips) / 20.0),
+        col_width: standard_width_256
+            .map(|width| f64::from(width) / 256.0)
+            .or_else(|| default_col_chars.map(|chars| f64::from(chars) + 5.0 / 7.0)),
+    };
+    Ok((
+        styles,
+        empty_formula_cells,
+        SheetSizes {
+            rows,
+            columns,
+            defaults,
+        },
+    ))
 }
 
 fn insert_style(

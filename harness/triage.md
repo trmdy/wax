@@ -1,6 +1,6 @@
 # wax mismatch triage
 
-Generated: `2026-07-30T00:03:17Z`
+Generated: `2026-07-30T07:33:41Z`
 
 Files compared: 2044.
 
@@ -71,14 +71,17 @@ No disagreements observed.
 | <code>corpus/files/openpyxl/3.1.5/openpyxl/tests/data/reader/nonstandard_workbook_name.xlsx</code> | <code>nonstandard OOXML workbook part normalized in memory</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/15228.xls</code> | <code>empty strings are not representable in xlsx</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/31749.xls</code> | <code>error cells written as text</code> |
+| <code>corpus/files/poi/test-data/spreadsheet/42844.xls</code> | <code>column widths clamped to 0..=255</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/44891.xls</code> | <code>empty strings are not representable in xlsx</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/46368.xls</code> | <code>cell 'Sheet1'!A1 string truncated from 32770 to 32767 characters</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/47813.xlsx</code> | <code>sheet "Chart" is not a worksheet and was emitted empty</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/49219.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/51519.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
+| <code>corpus/files/poi/test-data/spreadsheet/52348.xlsx</code> | <code>row heights clamped to 0..=409.5</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/52527.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/53404.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/53446.xls</code> | <code>error cells written as text</code> |
+| <code>corpus/files/poi/test-data/spreadsheet/54016.xls</code> | <code>column widths clamped to 0..=255</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/54206.xls</code> | <code>empty strings are not representable in xlsx</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/56557.xlsx</code> | <code>sheet "Chart" is not a worksheet and was emitted empty</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/57003-FixedFunctionTestCaseData.xls</code> | <code>error cells written as text</code> |
@@ -109,6 +112,7 @@ No disagreements observed.
 | <code>corpus/files/poi/test-data/spreadsheet/LookupFunctionsTestCaseData.xls</code> | <code>empty strings are not representable in xlsx</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/MatrixFormulaEvalTestData.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/MatrixFormulaEvalTestData.xlsx</code> | <code>error cells written as text</code> |
+| <code>corpus/files/poi/test-data/spreadsheet/NoGutsRecords.xls</code> | <code>row heights clamped to 0..=409.5</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/QuotientFunctionTestCaseData.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/ReptFunctionTestCaseData.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/poi/test-data/spreadsheet/RomanFunctionTestCaseData.xls</code> | <code>error cells written as text</code> |
@@ -210,6 +214,8 @@ No disagreements observed.
 | <code>corpus/files/sheetjs/test_files/apachepoi_42464-ExpPtg-bad.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_42464-ExpPtg-ok.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_42726.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_42844.xls</code> | <code>column widths clamped to 0..=255</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_42844.xls.xlsb</code> | <code>column widths clamped to 0..=255</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_42844.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_43251.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_43623.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
@@ -339,6 +345,8 @@ No disagreements observed.
 | <code>corpus/files/sheetjs/test_files/apachepoi_51710.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_51850.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_51963.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_52348.xlsx</code> | <code>row heights clamped to 0..=409.5</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_52348.xlsx.xlsb</code> | <code>row heights clamped to 0..=409.5</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_52348.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_52527.xls</code> | <code>error cells written as text</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_52527.xls.xlsb</code> | <code>error cells written as text</code> |
@@ -362,6 +370,8 @@ No disagreements observed.
 | <code>corpus/files/sheetjs/test_files/apachepoi_53798_shiftNegative_TMPL.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_53798_shiftNegative_TMPL.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_53972.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_54016.xls</code> | <code>column widths clamped to 0..=255</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_54016.xls.xlsb</code> | <code>column widths clamped to 0..=255</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_54016.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_54071.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_54084 - Greek - beyond BMP.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
@@ -478,6 +488,8 @@ No disagreements observed.
 | <code>corpus/files/sheetjs/test_files/apachepoi_MatchFunctionTestCaseData.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_MissingBits.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_NewlineInFormulas.xlsx.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_NoGutsRecords.xls</code> | <code>row heights clamped to 0..=409.5</code> |
+| <code>corpus/files/sheetjs/test_files/apachepoi_NoGutsRecords.xls.xlsb</code> | <code>row heights clamped to 0..=409.5</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_NoGutsRecords.xls.xlsb</code> | <code>xlsb merged regions are best-effort</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_NumberFormatApproxTests.xlsx.xlsb</code> | <code>error cells written as text</code> |
 | <code>corpus/files/sheetjs/test_files/apachepoi_NumberFormatApproxTests.xlsx.xlsb</code> | <code>empty strings are not representable in xlsx</code> |
