@@ -5,6 +5,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use rust_xlsxwriter::{Formula, Workbook};
 use serde_json::{json, Value};
 
 struct Server {
@@ -108,6 +109,21 @@ fn open_path(server: &mut Server, id: u64, path: &Path) -> Value {
 
 fn open(server: &mut Server, id: u64) -> Value {
     open_path(server, id, &fixture_path())
+}
+
+fn write_second_formula_fixture(path: &Path) {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet
+        .write_number(0, 0, 4.0)
+        .expect("precedent should write");
+    worksheet
+        .write_number(0, 1, 3.0)
+        .expect("second precedent should write");
+    worksheet
+        .write_formula(0, 2, Formula::new("A1*2+B1").set_result("11"))
+        .expect("formula should write");
+    workbook.save(path).expect("formula fixture should save");
 }
 
 #[test]
@@ -353,9 +369,9 @@ fn recalc_matches_full_reopen_across_formula_corpus_samples() {
         precedent: (u32, u32),
         formula: (u32, u32),
     }
-    let oracle = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join("harness/oracle/test/fixtures/oracle.xlsx");
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let second_fixture = temp.path().join("second-formula-fixture.xlsx");
+    write_second_formula_fixture(&second_fixture);
     let samples = [
         Sample {
             path: fixture_path(),
@@ -363,12 +379,11 @@ fn recalc_matches_full_reopen_across_formula_corpus_samples() {
             formula: (1, 2),
         },
         Sample {
-            path: oracle,
+            path: second_fixture,
             precedent: (0, 0),
             formula: (0, 2),
         },
     ];
-    let temp = tempfile::tempdir().expect("temporary directory");
     let mut server = Server::start(&[]);
     let mut id = 100_u64;
 

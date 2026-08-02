@@ -20,4 +20,5 @@ wax-store = { path = "../wax-store" }
 wax-write = { path = "../wax-write" }
 
 [dev-dependencies]
+rust_xlsxwriter.workspace = true
 tempfile.workspace = true
