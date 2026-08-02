@@ -155,7 +155,7 @@ run_fuzz_checks() {
 
   run_step "fuzz: cargo fuzz build" \
     rustup run "$nightly_toolchain" cargo fuzz build
-  for target in container_preflight xlsx_reader legacy_xls_reader; do
+  for target in container_preflight xlsx_reader legacy_xls_reader formula_parser; do
     if [[ "$fuzz_burn" == true ]]; then
       run_step "fuzz: ${target} ${WAX_FUZZ_BURN_SECONDS:-300} second burn" \
         burn_fuzz_target "$nightly_toolchain" "$target"

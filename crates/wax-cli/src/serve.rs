@@ -13,11 +13,14 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use wax_core::{CellOverride, SizeOverrides};
+use wax_core::CellOverride;
+#[cfg(test)]
+use wax_core::SizeOverrides;
+use wax_eval::{FormulaWorkbook, RecalcOutcome, DEFAULT_EVAL_BUDGET};
 use wax_proto::{
     parse_request, server_caps, CancelResponse, CloseResponse, ErrorCode, ErrorResponse,
-    ExportResponse, MetaResponse, OpenResponse, Request, Response, SheetSummary, StatsResponse,
-    VersionResponse, WindowResponse, WireCell, PROTO_VERSION,
+    ExportResponse, MetaResponse, OpenResponse, RecalcCell, RecalcResponse, Request, Response,
+    SheetSummary, StatsResponse, VersionResponse, WindowResponse, WireCell, PROTO_VERSION,
 };
 use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
 use wax_store::{Window, WindowCell, WorkbookStore};
@@ -225,6 +228,7 @@ impl State {
                     handle.clone(),
                     Handle {
                         store: opened.store,
+                        formula: opened.formula,
                         truncated: opened.truncated,
                         warnings: opened.warnings.clone(),
                         last_used: Instant::now(),
@@ -248,6 +252,26 @@ impl State {
                 bytes: outcome.bytes,
                 applied: outcome.applied,
                 dropped: outcome.dropped,
+            }),
+            Ok(WorkPayload::Recalc(outcome)) => Response::Recalc(RecalcResponse {
+                id: result.id,
+                ok: true,
+                changed: outcome
+                    .changed
+                    .into_iter()
+                    .map(|cell| RecalcCell {
+                        sheet: cell.sheet,
+                        r: cell.r,
+                        c: cell.c,
+                        v: cell.v,
+                        d: cell.d,
+                        e: cell.e,
+                    })
+                    .collect(),
+                evaluated: outcome.evaluated,
+                skipped: outcome.skipped,
+                truncated: outcome.truncated,
+                warnings: outcome.warnings,
             }),
         })
     }
@@ -288,6 +312,7 @@ impl State {
         handle.last_used = Instant::now();
         Ok(HandleSnapshot {
             store: Arc::clone(&handle.store),
+            formula: Arc::clone(&handle.formula),
             truncated: handle.truncated,
             warnings: handle.warnings.clone(),
         })
@@ -296,6 +321,7 @@ impl State {
 
 struct Handle {
     store: Arc<WorkbookStore>,
+    formula: Arc<FormulaWorkbook>,
     truncated: bool,
     warnings: Vec<String>,
     last_used: Instant,
@@ -303,6 +329,7 @@ struct Handle {
 
 struct HandleSnapshot {
     store: Arc<WorkbookStore>,
+    formula: Arc<FormulaWorkbook>,
     truncated: bool,
     warnings: Vec<String>,
 }
@@ -328,10 +355,12 @@ enum WorkPayload {
     Open(OpenedWorkbook),
     Window(Window),
     Export(ExportOutcome),
+    Recalc(RecalcOutcome),
 }
 
 struct OpenedWorkbook {
     store: Arc<WorkbookStore>,
+    formula: Arc<FormulaWorkbook>,
     truncated: bool,
     warnings: Vec<String>,
 }
@@ -473,7 +502,15 @@ fn dispatch(
                     handle
                         .store
                         .window(sheet, r0, c0, nr, nc)
-                        .map(WorkPayload::Window)
+                        .map(|mut window| {
+                            handle.formula.apply_to_window(
+                                sheet,
+                                window.r0,
+                                window.c0,
+                                &mut window.rows,
+                            );
+                            WorkPayload::Window(window)
+                        })
                         .ok_or_else(|| {
                             Failure::new(
                                 ErrorCode::BadRequest,
@@ -527,28 +564,82 @@ fn dispatch(
             );
             let sender = worker_sender.clone();
             thread::spawn(move || {
-                let outcome = match format {
-                    ExportFormat::Csv => export_csv(
-                        &handle.store,
-                        sheet,
-                        Path::new(&out),
-                        &overrides,
-                        &size_overrides,
-                        &cancel,
-                    ),
-                    ExportFormat::Xlsx => wax_write::write_xlsx_with_overrides(
-                        &handle.store,
-                        Path::new(&out),
-                        &overrides,
-                        &size_overrides,
-                        &cancel,
-                    )
-                    .map_err(writer_failure),
-                }
-                .map(|mut outcome| {
-                    outcome.dropped.extend(handle.warnings);
-                    WorkPayload::Export(outcome)
+                let evaluation_overrides = formula_overrides_for_export(format, sheet, &overrides);
+                let evaluation = handle
+                    .formula
+                    .recalculate(&handle.store, &evaluation_overrides, DEFAULT_EVAL_BUDGET)
+                    .map_err(eval_failure);
+                let outcome = evaluation.and_then(|evaluation| {
+                    match format {
+                        ExportFormat::Csv => wax_write::write_csv_with_evaluated_overrides(
+                            &handle.store,
+                            sheet,
+                            Path::new(&out),
+                            &overrides,
+                            &size_overrides,
+                            &evaluation.all_evaluated,
+                            &cancel,
+                        )
+                        .map_err(writer_failure),
+                        ExportFormat::Xlsx => wax_write::write_xlsx_with_evaluated_overrides(
+                            &handle.store,
+                            Path::new(&out),
+                            &overrides,
+                            &size_overrides,
+                            &evaluation.all_evaluated,
+                            &cancel,
+                        )
+                        .map_err(writer_failure),
+                    }
+                    .map(|mut outcome| {
+                        outcome.dropped.extend(evaluation.warnings);
+                        let unevaluated = if matches!(format, ExportFormat::Csv) {
+                            handle.formula.unevaluated_formulas_on_sheet(sheet)
+                        } else {
+                            handle.formula.unevaluated_formulas()
+                        };
+                        if unevaluated > 0 {
+                            outcome.dropped.push(format!(
+                                "formulas kept file-cached values ({unevaluated} unevaluated)"
+                            ));
+                        }
+                        outcome.dropped.extend(handle.warnings);
+                        WorkPayload::Export(outcome)
+                    })
                 });
+                let _ = sender.send(WorkResult { id, outcome });
+            });
+            None
+        }
+        Request::Recalc {
+            id,
+            handle,
+            overrides,
+        } => {
+            let handle = match state.touch(&handle) {
+                Ok(handle) => handle,
+                Err(failure) => return Some(error_response(Some(id), failure.code, failure.msg)),
+            };
+            let cancel = Arc::new(AtomicBool::new(false));
+            state.in_flight.insert(
+                id,
+                InFlight {
+                    cancel: Arc::clone(&cancel),
+                    deadline: None,
+                    kind: WorkKind::Other,
+                },
+            );
+            let sender = worker_sender.clone();
+            thread::spawn(move || {
+                let outcome = if cancel.load(Ordering::Acquire) {
+                    Err(Failure::new(ErrorCode::Cancelled, "request cancelled"))
+                } else {
+                    handle
+                        .formula
+                        .recalculate(&handle.store, &overrides, DEFAULT_EVAL_BUDGET)
+                        .map(WorkPayload::Recalc)
+                        .map_err(eval_failure)
+                };
                 let _ = sender.send(WorkResult { id, outcome });
             });
             None
@@ -600,6 +691,18 @@ enum ExportFormat {
     Csv,
 }
 
+fn formula_overrides_for_export(
+    format: ExportFormat,
+    sheet: u32,
+    overrides: &[CellOverride],
+) -> Vec<CellOverride> {
+    overrides
+        .iter()
+        .filter(|entry| matches!(format, ExportFormat::Xlsx) || entry.sheet == sheet)
+        .cloned()
+        .collect()
+}
+
 fn open_workbook(
     path: PathBuf,
     max_cells: usize,
@@ -621,6 +724,7 @@ fn open_workbook(
     }
     checkpoint(cancel)?;
 
+    let formula_supported = supports_formula_container(&path);
     let document = read_document_with_deadline(
         &path,
         ReaderOptions {
@@ -641,14 +745,28 @@ fn open_workbook(
     }
 
     let truncated = document.truncated;
-    let warnings = document.warnings.clone();
+    let mut warnings = document.warnings.clone();
     let store = Arc::new(WorkbookStore::from_document(document));
+    let (formula, evaluation) = if formula_supported {
+        FormulaWorkbook::open(&store, DEFAULT_EVAL_BUDGET)
+    } else {
+        FormulaWorkbook::file_cached(&store)
+    };
+    warnings.extend(evaluation.warnings);
+    let formula = Arc::new(formula);
     checkpoint(cancel)?;
     Ok(OpenedWorkbook {
         store,
+        formula,
         truncated,
         warnings,
     })
+}
+
+fn supports_formula_container(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "xlsx" | "xlsm"))
 }
 
 fn read_document_with_deadline(path: &Path, options: ReaderOptions) -> wax_core::Document {
@@ -683,6 +801,8 @@ fn sheet_summaries(store: &WorkbookStore) -> Vec<SheetSummary> {
                 default_col_width: meta
                     .default_col_width
                     .unwrap_or(wax_core::DEFAULT_COL_WIDTH_CHARS),
+                frozen_rows: meta.frozen_rows,
+                frozen_cols: meta.frozen_cols,
             })
         })
         .collect()
@@ -713,9 +833,11 @@ fn wire_cell(cell: WindowCell) -> WireCell {
         d: cell.d,
         f: cell.f,
         fmt: cell.fmt,
+        e: cell.e.then_some(true),
     }
 }
 
+#[cfg(test)]
 fn export_csv(
     store: &WorkbookStore,
     sheet: u32,
@@ -731,6 +853,13 @@ fn export_csv(
 fn writer_failure(error: wax_write::WriteError) -> Failure {
     Failure::new(
         ErrorCode::from_code(&error.code).unwrap_or(ErrorCode::Internal),
+        error.msg,
+    )
+}
+
+fn eval_failure(error: wax_eval::EvalError) -> Failure {
+    Failure::new(
+        ErrorCode::from_code(error.code).unwrap_or(ErrorCode::Internal),
         error.msg,
     )
 }
@@ -800,6 +929,8 @@ mod tests {
                 truncated: false,
                 merges: Vec::new(),
                 cells: vec![cell],
+                frozen_rows: 0,
+                frozen_cols: 0,
             }],
             Vec::new(),
         ))
@@ -850,6 +981,8 @@ mod tests {
                 cols: 3,
                 truncated: false,
                 merges: Vec::new(),
+                frozen_rows: 0,
+                frozen_cols: 0,
                 cells: vec![
                     Cell {
                         s: None,
@@ -908,6 +1041,32 @@ mod tests {
         assert_eq!(
             checkpoint(&cancel).expect_err("cancel should fail").code,
             ErrorCode::Cancelled
+        );
+    }
+
+    #[test]
+    fn csv_formula_evaluation_ignores_other_sheet_overrides() {
+        let overrides = vec![
+            CellOverride {
+                sheet: 0,
+                r: 0,
+                c: 0,
+                v: Some(CellValue::Number(1.0)),
+            },
+            CellOverride {
+                sheet: 1,
+                r: 0,
+                c: 0,
+                v: Some(CellValue::Number(2.0)),
+            },
+        ];
+        assert_eq!(
+            formula_overrides_for_export(ExportFormat::Csv, 0, &overrides),
+            overrides[..1]
+        );
+        assert_eq!(
+            formula_overrides_for_export(ExportFormat::Xlsx, 0, &overrides),
+            overrides
         );
     }
 

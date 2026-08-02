@@ -22,6 +22,14 @@ pub const CAP_SHEET_SIZE_INFOS: &str = "sheetSizeInfos";
 /// separately from `sheetSizeInfos` per the pinned contract.
 pub const CAP_EXPORT_SIZE_OVERRIDES: &str = "exportSizeOverrides";
 
+/// Capability string advertising formula evaluation, evaluated wire cells,
+/// and the `recalc` operation (v0.4 contract).
+pub const CAP_FORMULA_EVAL: &str = "formulaEval";
+
+/// Capability string advertising flat, always-present frozen row/column
+/// metadata on every `open`/`meta` sheet entry (v0.4 contract).
+pub const CAP_SHEET_VIEW: &str = "sheetView";
+
 /// Every capability this server advertises on `version` and `open`
 /// responses. Additive — absence of `caps` means no capabilities; the
 /// `--version` line never carries capabilities (release-workflow contract).
@@ -30,6 +38,8 @@ pub fn server_caps() -> Vec<String> {
         CAP_EXPORT_OVERRIDES.to_owned(),
         CAP_SHEET_SIZE_INFOS.to_owned(),
         CAP_EXPORT_SIZE_OVERRIDES.to_owned(),
+        CAP_FORMULA_EVAL.to_owned(),
+        CAP_SHEET_VIEW.to_owned(),
     ]
 }
 pub const SERVE_DEFAULT_MAX_CELLS: u64 = 5_000_000;
@@ -122,6 +132,11 @@ pub enum Request {
         overrides: Vec<CellOverride>,
         size_overrides: SizeOverrides,
     },
+    Recalc {
+        id: u64,
+        handle: String,
+        overrides: Vec<CellOverride>,
+    },
     Close {
         id: u64,
         handle: String,
@@ -143,6 +158,7 @@ impl Request {
             | Self::Meta { id, .. }
             | Self::Window { id, .. }
             | Self::Export { id, .. }
+            | Self::Recalc { id, .. }
             | Self::Close { id, .. }
             | Self::Cancel { id, .. }
             | Self::Stats { id } => *id,
@@ -227,6 +243,15 @@ pub fn parse_request(line: &str) -> Result<Request, RequestError> {
             size_overrides: match object.get("sizeOverrides") {
                 None => SizeOverrides::default(),
                 Some(value) => parse_size_overrides(value)
+                    .map_err(|message| RequestError::new(Some(id), message))?,
+            },
+        }),
+        "recalc" => Ok(Request::Recalc {
+            id,
+            handle: required_string(object, id, "handle")?.to_owned(),
+            overrides: match object.get("overrides") {
+                None => Vec::new(),
+                Some(value) => parse_overrides(value)
                     .map_err(|message| RequestError::new(Some(id), message))?,
             },
         }),
@@ -444,6 +469,7 @@ pub enum Response {
     Meta(MetaResponse),
     Window(WindowResponse),
     Export(ExportResponse),
+    Recalc(RecalcResponse),
     Close(CloseResponse),
     Cancel(CancelResponse),
     Stats(StatsResponse),
@@ -496,6 +522,10 @@ pub struct SheetSummary {
     pub default_row_height: f64,
     #[serde(rename = "defaultColWidth")]
     pub default_col_width: f64,
+    #[serde(rename = "frozenRows")]
+    pub frozen_rows: u32,
+    #[serde(rename = "frozenCols")]
+    pub frozen_cols: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -529,6 +559,8 @@ pub struct WireCell {
     pub f: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fmt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub e: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -551,6 +583,27 @@ pub struct ExportResponse {
     pub bytes: u64,
     pub applied: u64,
     pub dropped: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RecalcCell {
+    pub sheet: u32,
+    pub r: u32,
+    pub c: u32,
+    pub v: Option<CellValue>,
+    pub d: Option<String>,
+    pub e: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct RecalcResponse {
+    pub id: u64,
+    pub ok: bool,
+    pub changed: Vec<RecalcCell>,
+    pub evaluated: u64,
+    pub skipped: u64,
+    pub truncated: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -794,6 +847,56 @@ mod tests {
     }
 
     #[test]
+    fn recalc_reuses_override_shape_and_serializes_evaluated_changes() {
+        let request = parse_request(
+            r#"{"id":17,"op":"recalc","handle":"h1","overrides":[
+                {"sheet":0,"r":1,"c":2,"v":42.5},
+                {"sheet":0,"r":1,"c":2,"v":null}
+            ]}"#,
+        )
+        .expect("recalc request should parse");
+        let Request::Recalc {
+            id,
+            handle,
+            overrides,
+        } = request
+        else {
+            panic!("expected recalc request");
+        };
+        assert_eq!(id, 17);
+        assert_eq!(handle, "h1");
+        assert_eq!(overrides.len(), 2);
+        assert_eq!(overrides[0].v, Some(CellValue::Number(42.5)));
+        assert_eq!(overrides[1].v, None);
+
+        let response = serde_json::to_value(RecalcResponse {
+            id: 17,
+            ok: true,
+            changed: vec![RecalcCell {
+                sheet: 0,
+                r: 1,
+                c: 3,
+                v: Some(CellValue::Number(43.5)),
+                d: Some("43.50".to_owned()),
+                e: true,
+            }],
+            evaluated: 1,
+            skipped: 0,
+            truncated: false,
+            warnings: Vec::new(),
+        })
+        .expect("recalc response should serialize");
+        assert_eq!(
+            response,
+            serde_json::json!({
+                "id":17,"ok":true,
+                "changed":[{"sheet":0,"r":1,"c":3,"v":43.5,"d":"43.50","e":true}],
+                "evaluated":1,"skipped":0,"truncated":false,"warnings":[]
+            })
+        );
+    }
+
+    #[test]
     fn export_size_overrides_parse_and_reject_malformed_fields() {
         let request = parse_request(
             r#"{"id":7,"op":"export","handle":"h1","format":"xlsx","out":"/tmp/x.xlsx",
@@ -893,7 +996,9 @@ mod tests {
             vec![
                 "exportOverrides".to_owned(),
                 "sheetSizeInfos".to_owned(),
-                "exportSizeOverrides".to_owned()
+                "exportSizeOverrides".to_owned(),
+                "formulaEval".to_owned(),
+                "sheetView".to_owned()
             ]
         );
         let version = serde_json::to_value(VersionResponse {
@@ -906,7 +1011,13 @@ mod tests {
         .expect("version response should serialize");
         assert_eq!(
             version["caps"],
-            serde_json::json!(["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"])
+            serde_json::json!([
+                "exportOverrides",
+                "sheetSizeInfos",
+                "exportSizeOverrides",
+                "formulaEval",
+                "sheetView"
+            ])
         );
         let open = serde_json::to_value(OpenResponse {
             id: 2,
@@ -921,7 +1032,13 @@ mod tests {
         .expect("open response should serialize");
         assert_eq!(
             open["caps"],
-            serde_json::json!(["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"])
+            serde_json::json!([
+                "exportOverrides",
+                "sheetSizeInfos",
+                "exportSizeOverrides",
+                "formulaEval",
+                "sheetView"
+            ])
         );
     }
 
@@ -939,6 +1056,8 @@ mod tests {
             }],
             default_row_height: 14.4,
             default_col_width: 8.43,
+            frozen_rows: 2,
+            frozen_cols: 1,
         })
         .expect("summary should serialize");
         assert_eq!(
@@ -952,6 +1071,8 @@ mod tests {
                 "rowInfos": [{"r": 0, "height": 27.75}],
                 "defaultRowHeight": 14.4,
                 "defaultColWidth": 8.43,
+                "frozenRows": 2,
+                "frozenCols": 1,
             })
         );
 
@@ -966,6 +1087,8 @@ mod tests {
             row_infos: Vec::new(),
             default_row_height: 15.0,
             default_col_width: 8.43,
+            frozen_rows: 0,
+            frozen_cols: 0,
         })
         .expect("summary should serialize");
         assert_eq!(bare["colInfos"], serde_json::json!([]));
@@ -980,10 +1103,24 @@ mod tests {
             d: None,
             f: None,
             fmt: None,
+            e: None,
         };
         assert_eq!(
             serde_json::to_value(cell).expect("cell should serialize"),
             serde_json::json!({"t":"n","v":null})
+        );
+
+        let evaluated = WireCell {
+            t: CellType::N,
+            v: Some(CellValue::Number(5.0)),
+            d: Some("5".to_owned()),
+            f: Some("SUM(A1:B1)".to_owned()),
+            fmt: None,
+            e: Some(true),
+        };
+        assert_eq!(
+            serde_json::to_value(evaluated).expect("evaluated cell should serialize"),
+            serde_json::json!({"t":"n","v":5.0,"d":"5","f":"SUM(A1:B1)","e":true})
         );
     }
 }

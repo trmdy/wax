@@ -24,7 +24,8 @@ pub use roundtrip::{
 };
 pub use runner::{run, RunnerConfig, RunnerPasses, RunnerReport};
 pub use serve::{
-    detect_serve, run_serve_file, window_offsets, ExportSmokeMetric, ServeAvailability,
-    ServeFailure, ServeFileConfig, ServeFileMetrics, ServeRequestMetric,
+    detect_serve, run_serve_file, window_offsets, ExportSmokeMetric, FormulaDisagreement,
+    FormulaEvalMetric, FormulaProbe, ServeAvailability, ServeFailure, ServeFileConfig,
+    ServeFileMetrics, ServeRequestMetric,
 };
 pub use triage::render_triage;

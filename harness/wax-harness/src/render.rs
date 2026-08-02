@@ -73,6 +73,18 @@ pub fn render_markdown_with_formats(
     .unwrap();
     writeln!(
         output,
+        "| formula cells evaluated % (covered set) | {} | n/a |",
+        serve_ratio(scoreboard, Some(&metrics.formula_cells_evaluated))
+    )
+    .unwrap();
+    writeln!(
+        output,
+        "| evaluated-vs-file-cached agreement % | {} | n/a |",
+        serve_ratio(scoreboard, Some(&metrics.evaluated_cache_agreement))
+    )
+    .unwrap();
+    writeln!(
+        output,
         "| p50 parse time | {} | {} |",
         milliseconds(metrics.parse_time_ms.wax.p50),
         milliseconds(metrics.parse_time_ms.sheetjs.p50)

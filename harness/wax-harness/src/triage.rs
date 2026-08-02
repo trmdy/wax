@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
+use std::path::Path;
 
 use crate::compare::{FileMetrics, MismatchBucket};
 
@@ -109,7 +110,7 @@ fn render_round_trip_merge_defects(output: &mut String, results: &[FileMetrics])
             writeln!(
                 output,
                 "| {} | {} |",
-                inline_code(&result.path),
+                inline_code(&display_path(result)),
                 inline_code(defect)
             )
             .unwrap();
@@ -175,7 +176,7 @@ fn render_oracle_read_back_defects(output: &mut String, results: &[FileMetrics])
         writeln!(
             output,
             "| {} | {} |",
-            inline_code(&result.path),
+            inline_code(&display_path(result)),
             inline_code(&error)
         )
         .unwrap();
@@ -229,7 +230,7 @@ fn render_round_trip_export_drops(output: &mut String, results: &[FileMetrics]) 
             writeln!(
                 output,
                 "| {} | {} |",
-                inline_code(&result.path),
+                inline_code(&display_path(result)),
                 inline_code(dropped)
             )
             .unwrap();
@@ -285,7 +286,7 @@ fn render_round_trip_failures(output: &mut String, results: &[FileMetrics]) {
         writeln!(
             output,
             "| {} | {} |",
-            inline_code(&result.path),
+            inline_code(&display_path(result)),
             inline_code(&detail)
         )
         .unwrap();
@@ -306,17 +307,33 @@ fn record(
     totals: &mut BTreeMap<String, CategoryAggregate>,
     category: &str,
     count: u64,
-    example: Option<&str>,
+    example: Option<String>,
 ) {
     let total = totals.entry(category.to_owned()).or_default();
     total.count += count;
     if let Some(example) = example {
-        total.examples.insert(example.to_owned());
+        total.examples.insert(example);
     }
 }
 
-fn example_path(result: &FileMetrics) -> Option<&str> {
-    (!result.private).then_some(result.path.as_str())
+fn example_path(result: &FileMetrics) -> Option<String> {
+    (!result.private).then(|| display_path(result))
+}
+
+fn display_path(result: &FileMetrics) -> String {
+    if Path::new(&result.path).is_absolute() {
+        if result.id.starts_with("corpus/") {
+            result.id.clone()
+        } else if result.path.contains("/corpus/files/")
+            || result.path.contains("\\corpus\\files\\")
+        {
+            format!("corpus/files/{}", result.id)
+        } else {
+            result.id.clone()
+        }
+    } else {
+        result.path.clone()
+    }
 }
 
 fn render_section(
@@ -440,6 +457,20 @@ mod tests {
         assert!(!markdown.contains("secret-ledger"));
         assert!(markdown.contains("<code>wax:n / SheetJS:s</code> | 4"));
         assert!(markdown.contains("<code>#,##0.00&#124;kr</code> | 2"));
+    }
+
+    #[test]
+    fn triage_uses_stable_manifest_ids_instead_of_machine_local_paths() {
+        let mut result = file("corpus/files/public/example.xlsx", false);
+        result.path = "/machine-local/payload/example.xlsx".to_owned();
+        let mut relocated_corpus = file("poi/example.xlsx", false);
+        relocated_corpus.path = "/machine-local/corpus/files/poi/example.xlsx".to_owned();
+
+        let markdown = render_triage(&[result, relocated_corpus], "2026-08-02T00:00:00Z");
+
+        assert!(markdown.contains("<code>corpus/files/public/example.xlsx</code>"));
+        assert!(markdown.contains("<code>corpus/files/poi/example.xlsx</code>"));
+        assert!(!markdown.contains("machine-local"));
     }
 
     #[test]

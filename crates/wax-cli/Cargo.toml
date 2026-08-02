@@ -13,6 +13,7 @@ libc.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 wax-core = { path = "../wax-core" }
+wax-eval = { path = "../wax-eval" }
 wax-proto = { path = "../wax-proto" }
 wax-read = { path = "../wax-read" }
 wax-store = { path = "../wax-store" }

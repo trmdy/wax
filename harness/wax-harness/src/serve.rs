@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
@@ -24,6 +24,7 @@ pub struct ServeFileConfig<'a> {
     pub file: &'a Path,
     pub timeout: Duration,
     pub export_smoke: bool,
+    pub formula_probes: &'a [FormulaProbe],
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -35,6 +36,40 @@ pub struct ServeFileMetrics {
     pub export_smoke: Option<ExportSmokeMetric>,
     pub failure: Option<ServeFailure>,
     pub killed: bool,
+    #[serde(default)]
+    pub formula_eval: FormulaEvalMetric,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaProbe {
+    pub sheet: u64,
+    pub r: u64,
+    pub c: u64,
+    pub formula: String,
+    pub cached: Value,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaEvalMetric {
+    pub covered: u64,
+    pub evaluated: u64,
+    pub cache_compared: u64,
+    pub cache_agreed: u64,
+    #[serde(default)]
+    pub disagreements: Vec<FormulaDisagreement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaDisagreement {
+    pub sheet: u64,
+    pub r: u64,
+    pub c: u64,
+    pub formula: String,
+    pub cached: Value,
+    pub evaluated: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -594,13 +629,22 @@ pub fn run_serve_file(config: ServeFileConfig<'_>) -> ServeFileMetrics {
     for (id, r0, c0) in windows {
         match client.receive(id) {
             Ok(response) => {
-                if let Err(failure) = validate_window(&response, r0, c0) {
+                if let Err(failure) = validate_window(&response, 0, r0, c0) {
                     client.mark_request_failed(id, failure.clone());
                     remember_failure(&mut output.failure, failure);
                 }
             }
             Err(failure) => return finish_failure(output, client, failure),
         }
+    }
+
+    if let Err(failure) = collect_formula_eval(
+        &mut client,
+        &handle,
+        config.formula_probes,
+        &mut output.formula_eval,
+    ) {
+        return finish_failure(output, client, failure);
     }
 
     if config.export_smoke {
@@ -743,6 +787,79 @@ fn collect_stats(
         }
     }
     Ok(())
+}
+
+fn collect_formula_eval(
+    client: &mut ServeClient,
+    handle: &str,
+    probes: &[FormulaProbe],
+    metric: &mut FormulaEvalMetric,
+) -> Result<(), ServeFailure> {
+    metric.covered = probes.len() as u64;
+    let mut windows = BTreeMap::<(u64, u64, u64), Vec<&FormulaProbe>>::new();
+    for probe in probes {
+        windows
+            .entry((
+                probe.sheet,
+                probe.r / WINDOW_ROWS * WINDOW_ROWS,
+                probe.c / WINDOW_COLS * WINDOW_COLS,
+            ))
+            .or_default()
+            .push(probe);
+    }
+    for ((sheet, r0, c0), probes) in windows {
+        let id = client.issue("window", |id| window_request(id, handle, sheet, r0, c0))?;
+        let response = client.receive(id)?;
+        if let Err(failure) = validate_window(&response, sheet, r0, c0) {
+            client.mark_request_failed(id, failure.clone());
+            return Err(failure);
+        }
+        let rows = response
+            .get("rows")
+            .and_then(Value::as_array)
+            .expect("validated window rows");
+        for probe in probes {
+            let Some(cell) = rows
+                .get((probe.r - r0) as usize)
+                .and_then(Value::as_array)
+                .and_then(|row| row.get((probe.c - c0) as usize))
+                .filter(|cell| !cell.is_null())
+            else {
+                continue;
+            };
+            if cell.get("e").and_then(Value::as_bool) != Some(true) {
+                continue;
+            }
+            metric.evaluated = metric.evaluated.saturating_add(1);
+            let Some(evaluated) = cell.get("v") else {
+                continue;
+            };
+            metric.cache_compared = metric.cache_compared.saturating_add(1);
+            if formula_values_match(&probe.cached, evaluated) {
+                metric.cache_agreed = metric.cache_agreed.saturating_add(1);
+            } else if metric.disagreements.len() < 50 {
+                metric.disagreements.push(FormulaDisagreement {
+                    sheet: probe.sheet,
+                    r: probe.r,
+                    c: probe.c,
+                    formula: probe.formula.clone(),
+                    cached: probe.cached.clone(),
+                    evaluated: evaluated.clone(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn formula_values_match(cached: &Value, evaluated: &Value) -> bool {
+    match (cached.as_f64(), evaluated.as_f64()) {
+        (Some(left), Some(right)) => {
+            let tolerance = 1e-9_f64.max(1e-9 * left.abs().max(right.abs()));
+            (left - right).abs() <= tolerance
+        }
+        _ => cached == evaluated,
+    }
 }
 
 fn finish_failure(
@@ -915,11 +1032,12 @@ fn parse_sheet_extents(response: &Value, op: &str) -> Result<Vec<(u64, u64)>, Se
 
 fn validate_window(
     response: &Value,
+    requested_sheet: u64,
     requested_r0: u64,
     requested_c0: u64,
 ) -> Result<(), ServeFailure> {
     ensure_success(response, "window")?;
-    if response.get("sheet").and_then(Value::as_u64) != Some(0)
+    if response.get("sheet").and_then(Value::as_u64) != Some(requested_sheet)
         || response.get("r0").and_then(Value::as_u64) != Some(requested_r0)
         || response.get("c0").and_then(Value::as_u64) != Some(requested_c0)
     {

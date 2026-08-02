@@ -43,6 +43,7 @@ impl Reader for CalamineReader {
                     outcome.warnings,
                 );
                 document.styles = outcome.styles;
+                document.date_1904 = outcome.date_1904;
                 document
             }
             Ok(Err(failure)) => failure_document(file, failure),
@@ -61,6 +62,7 @@ struct ReadOutcome {
     sheets: Vec<Sheet>,
     warnings: Vec<String>,
     styles: Vec<CellStyle>,
+    date_1904: bool,
 }
 
 fn read_workbook(path: &Path, options: ReaderOptions) -> Result<ReadOutcome, ReadFailure> {
@@ -82,6 +84,7 @@ fn read_workbook(path: &Path, options: ReaderOptions) -> Result<ReadOutcome, Rea
                     sheets,
                     warnings,
                     styles: Vec::new(),
+                    date_1904: false,
                 }
             })
         }
@@ -91,6 +94,7 @@ fn read_workbook(path: &Path, options: ReaderOptions) -> Result<ReadOutcome, Rea
                     sheets,
                     warnings,
                     styles: Vec::new(),
+                    date_1904: false,
                 }
             })
         }
@@ -100,6 +104,7 @@ fn read_workbook(path: &Path, options: ReaderOptions) -> Result<ReadOutcome, Rea
                     sheets,
                     warnings,
                     styles: Vec::new(),
+                    date_1904: false,
                 }
             })
         }
@@ -249,6 +254,9 @@ fn read_xlsx_workbook<RS: Read + Seek>(
         let defaults = supplement.sheet_defaults(&metadata.name);
         sheet.default_row_height = defaults.row_height;
         sheet.default_col_width = defaults.col_width;
+        let view = supplement.sheet_view(&metadata.name);
+        sheet.frozen_rows = view.frozen_rows;
+        sheet.frozen_cols = view.frozen_cols;
         sheets.push(sheet);
     }
     let styles = compact_styles(&mut sheets, &styles);
@@ -256,6 +264,7 @@ fn read_xlsx_workbook<RS: Read + Seek>(
         sheets,
         warnings,
         styles,
+        date_1904: epoch_1904,
     })
 }
 
@@ -415,6 +424,9 @@ fn read_xlsb_workbook<RS: Read + Seek>(
             sheet.default_row_height = sizes.defaults.row_height;
             sheet.default_col_width = sizes.defaults.col_width;
         }
+        let view = supplement.sheet_view(&metadata.name);
+        sheet.frozen_rows = view.frozen_rows;
+        sheet.frozen_cols = view.frozen_cols;
         sheets.push(sheet);
     }
 
@@ -488,6 +500,9 @@ fn read_xls(
             sheet.default_row_height = sizes.defaults.row_height;
             sheet.default_col_width = sizes.defaults.col_width;
         }
+        let view = supplement.sheet_view(index);
+        sheet.frozen_rows = view.frozen_rows;
+        sheet.frozen_cols = view.frozen_cols;
         sheets.push(sheet);
     }
 
@@ -886,6 +901,8 @@ fn finish_sheet(draft: SheetDraft<'_>, emitted: &mut usize, max_cells: usize) ->
         truncated,
         merges,
         cells: candidates,
+        frozen_rows: 0,
+        frozen_cols: 0,
     }
 }
 
@@ -902,6 +919,8 @@ fn empty_sheet(name: &str, index: usize) -> Sheet {
         truncated: false,
         merges: Vec::new(),
         cells: Vec::new(),
+        frozen_rows: 0,
+        frozen_cols: 0,
     }
 }
 
@@ -1062,6 +1081,12 @@ struct SheetDefaults {
     col_width: Option<f64>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct SheetView {
+    frozen_rows: u32,
+    frozen_cols: u32,
+}
+
 /// Declared row heights, column widths, and sheet defaults recovered from a
 /// legacy container's own records (BIFF/BrtRecord supplements).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1077,6 +1102,7 @@ struct OoxmlSheetSupplement {
     columns: Vec<ColumnDeclaration>,
     rows: Vec<RowDeclaration>,
     defaults: SheetDefaults,
+    view: SheetView,
 }
 
 #[derive(Default)]
@@ -1161,6 +1187,7 @@ impl OoxmlSupplement {
                         columns: Ok(Vec::new()),
                         rows: Ok(Vec::new()),
                         defaults: SheetDefaults::default(),
+                        view: SheetView::default(),
                     }
                 }
             };
@@ -1191,6 +1218,7 @@ impl OoxmlSupplement {
                     columns,
                     rows,
                     defaults: parsed.defaults,
+                    view: parsed.view,
                 },
             );
         }
@@ -1229,6 +1257,13 @@ impl OoxmlSupplement {
         self.sheets
             .get(sheet)
             .map(|sheet| sheet.defaults)
+            .unwrap_or_default()
+    }
+
+    fn sheet_view(&self, sheet: &str) -> SheetView {
+        self.sheets
+            .get(sheet)
+            .map(|sheet| sheet.view)
             .unwrap_or_default()
     }
 
@@ -1873,6 +1908,7 @@ struct ParsedSheetMetadata {
     columns: Result<Vec<ColumnDeclaration>, String>,
     rows: Result<Vec<RowDeclaration>, String>,
     defaults: SheetDefaults,
+    view: SheetView,
 }
 
 fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
@@ -1884,6 +1920,7 @@ fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
     let mut rows = Vec::new();
     let mut row_error = None;
     let mut defaults = SheetDefaults::default();
+    let mut view = SheetView::default();
     let mut in_columns = false;
     let mut row_index = 0_u32;
     let mut col_index = 0_u32;
@@ -1912,6 +1949,13 @@ fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
                 if element.local_name().as_ref() == b"sheetFormatPr" =>
             {
                 defaults = parse_sheet_format_defaults(&reader, &element);
+            }
+            Ok(Event::Start(element) | Event::Empty(element))
+                if element.local_name().as_ref() == b"pane" =>
+            {
+                if let Some(parsed) = parse_frozen_pane(&reader, &element) {
+                    view = parsed;
+                }
             }
             Ok(Event::Start(element)) if element.local_name().as_ref() == b"row" => {
                 if let Some(row) =
@@ -1981,6 +2025,27 @@ fn parse_sheet_metadata(xml: &[u8]) -> Result<ParsedSheetMetadata, String> {
         columns: column_error.map_or_else(|| Ok(columns), Err),
         rows: row_error.map_or_else(|| Ok(rows), Err),
         defaults,
+        view,
+    })
+}
+
+fn parse_frozen_pane(reader: &XmlReader<&[u8]>, element: &BytesStart<'_>) -> Option<SheetView> {
+    let state = xml_attribute(reader, element, b"state").ok().flatten()?;
+    if !matches!(state.as_str(), "frozen" | "frozenSplit") {
+        return None;
+    }
+    let split = |key: &[u8]| {
+        xml_attribute(reader, element, key)
+            .ok()
+            .flatten()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value >= 0.0 && value.fract() == 0.0)
+            .and_then(|value| u32::try_from(value as u64).ok())
+            .unwrap_or(0)
+    };
+    Some(SheetView {
+        frozen_rows: split(b"ySplit"),
+        frozen_cols: split(b"xSplit"),
     })
 }
 
@@ -2657,6 +2722,29 @@ mod tests {
             br#"<worksheet><cols><col min="3" max="1" width="8" customWidth="1"/></cols></worksheet>"#
         )
         .is_err());
+    }
+
+    #[test]
+    fn frozen_panes_are_flat_counts_and_split_panes_are_ignored() {
+        let frozen = parse_sheet_metadata(
+            br#"<worksheet><sheetViews><sheetView><pane xSplit="2" ySplit="3" state="frozen"/></sheetView></sheetViews></worksheet>"#,
+        )
+        .expect("frozen worksheet metadata");
+        assert_eq!(frozen.view.frozen_rows, 3);
+        assert_eq!(frozen.view.frozen_cols, 2);
+
+        let frozen_split = parse_sheet_metadata(
+            br#"<worksheet><sheetViews><sheetView><pane xSplit="1" ySplit="4" state="frozenSplit"/></sheetView></sheetViews></worksheet>"#,
+        )
+        .expect("frozen-split worksheet metadata");
+        assert_eq!(frozen_split.view.frozen_rows, 4);
+        assert_eq!(frozen_split.view.frozen_cols, 1);
+
+        let ordinary_split = parse_sheet_metadata(
+            br#"<worksheet><sheetViews><sheetView><pane xSplit="1200" ySplit="900" state="split"/></sheetView></sheetViews></worksheet>"#,
+        )
+        .expect("split worksheet metadata");
+        assert_eq!(ordinary_split.view, SheetView::default());
     }
 
     #[test]

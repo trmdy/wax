@@ -176,6 +176,8 @@ impl Reader for StubReader {
                 truncated: parsed.truncated,
                 merges: Vec::new(),
                 cells: parsed.cells,
+                frozen_rows: 0,
+                frozen_cols: 0,
             });
         }
 

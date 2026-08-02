@@ -41,6 +41,8 @@ pub struct SheetMeta {
     pub rows: u32,
     pub cols: u32,
     pub truncated: bool,
+    pub frozen_rows: u32,
+    pub frozen_cols: u32,
     pub default_row_height: Option<f64>,
     pub default_col_width: Option<f64>,
 }
@@ -55,6 +57,9 @@ pub struct WindowCell {
     pub d: Option<String>,
     pub f: Option<String>,
     pub fmt: Option<String>,
+    /// True only for a formula value computed by wax v0.4. The immutable
+    /// store initializes this false; formula overlays set it for wire cells.
+    pub e: bool,
     /// Index into [`WorkbookStore::styles`]. Not exposed on the proto v0
     /// window wire format; consumed by the W4 writer.
     pub s: Option<u32>,
@@ -268,6 +273,7 @@ impl StoredColumns {
             d: resolve_optional_string(strings, self.displays[index]),
             f: resolve_optional_string(strings, self.formulas[index]),
             fmt: resolve_optional_string(strings, self.formats[index]),
+            e: false,
             s: match self.styles[index] {
                 MISSING_STYLE => None,
                 id => Some(id),
@@ -312,6 +318,8 @@ struct StoredSheet {
     rows: u32,
     cols: u32,
     truncated: bool,
+    frozen_rows: u32,
+    frozen_cols: u32,
     merges: Vec<StoredMerge>,
     col_infos: Vec<ColInfo>,
     row_infos: Vec<RowInfo>,
@@ -376,6 +384,8 @@ impl WorkbookStoreBuilder {
             rows: sheet.rows,
             cols: sheet.cols,
             truncated: sheet.truncated,
+            frozen_rows: sheet.frozen_rows,
+            frozen_cols: sheet.frozen_cols,
             default_row_height: sheet.default_row_height,
             default_col_width: sheet.default_col_width,
         };
@@ -462,6 +472,8 @@ impl WorkbookStoreBuilder {
             rows: meta.rows,
             cols: meta.cols,
             truncated: meta.truncated,
+            frozen_rows: meta.frozen_rows,
+            frozen_cols: meta.frozen_cols,
             merges: stored_merges,
             col_infos,
             row_infos,
@@ -480,6 +492,7 @@ impl WorkbookStoreBuilder {
             strings: self.strings.finish(),
             sheets: self.sheets,
             styles: self.styles,
+            date_1904: false,
         }
     }
 }
@@ -490,18 +503,26 @@ pub struct WorkbookStore {
     strings: StringTable,
     sheets: Vec<StoredSheet>,
     styles: Vec<CellStyle>,
+    date_1904: bool,
 }
 
 impl WorkbookStore {
     /// Ingest a successful normalized dump. The caller drops the `Document`
     /// afterwards; the store is the long-lived representation.
     pub fn from_document(document: Document) -> Self {
+        let date_1904 = document.date_1904;
         let mut builder = WorkbookStoreBuilder::new();
         builder.set_styles(document.styles);
         for sheet in document.sheets {
             builder.add_sheet(sheet);
         }
-        builder.build()
+        let mut store = builder.build();
+        store.date_1904 = date_1904;
+        store
+    }
+
+    pub const fn date_1904(&self) -> bool {
+        self.date_1904
     }
 
     /// Workbook-wide style table referenced by [`WindowCell::s`].
@@ -563,6 +584,30 @@ impl WorkbookStore {
         u32::try_from(self.sheets.len()).unwrap_or(u32::MAX)
     }
 
+    /// Materialize one stored cell without allocating a one-by-one window.
+    /// Missing cells and unknown sheets both return `None`; callers that need
+    /// to distinguish them can validate the sheet with [`Self::sheet_meta`].
+    pub fn cell(&self, sheet: u32, row: u32, column: u32) -> Option<WindowCell> {
+        let stored = self.sheets.get(usize::try_from(sheet).ok()?)?;
+        let row_offset = stored
+            .row_index
+            .binary_search_by_key(&row, |indexed| indexed.row)
+            .ok()?;
+        let start = stored.row_index[row_offset].start as usize;
+        let end = stored
+            .row_index
+            .get(row_offset + 1)
+            .map_or(stored.columns.cols.len(), |next| next.start as usize);
+        let columns = &stored.columns.cols[start..end];
+        // Duplicate normalized coordinates are last-wins. `partition_point`
+        // finds the position after the final equal column.
+        let after = columns.partition_point(|candidate| *candidate <= column);
+        if after == 0 || columns[after - 1] != column {
+            return None;
+        }
+        Some(stored.columns.cell(start + after - 1, &self.strings))
+    }
+
     pub fn sheet_meta(&self, sheet: u32) -> Option<SheetMeta> {
         let stored = self.sheets.get(usize::try_from(sheet).ok()?)?;
         Some(SheetMeta {
@@ -570,6 +615,8 @@ impl WorkbookStore {
             rows: stored.rows,
             cols: stored.cols,
             truncated: stored.truncated,
+            frozen_rows: stored.frozen_rows,
+            frozen_cols: stored.frozen_cols,
             default_row_height: stored.default_row_height,
             default_col_width: stored.default_col_width,
         })
@@ -746,6 +793,8 @@ mod tests {
                 truncated: false,
                 merges,
                 cells,
+                frozen_rows: 0,
+                frozen_cols: 0,
             }],
             Vec::new(),
         )
@@ -930,6 +979,8 @@ mod tests {
                 cols: 1,
                 truncated: false,
                 merges: Vec::new(),
+                frozen_rows: 0,
+                frozen_cols: 0,
                 cells: vec![Cell {
                     s: None,
                     r: 0,
@@ -988,6 +1039,8 @@ mod tests {
                     cols: 3,
                     truncated: false,
                     merges: vec!["A1:B1".to_owned()],
+                    frozen_rows: 0,
+                    frozen_cols: 0,
                     cells: vec![
                         number_cell(3, 2, 3.0),
                         number_cell(0, 0, 1.0),
@@ -1005,6 +1058,8 @@ mod tests {
                     cols: 1,
                     truncated: true,
                     merges: Vec::new(),
+                    frozen_rows: 0,
+                    frozen_cols: 0,
                     cells: vec![Cell {
                         s: None,
                         r: 0,
@@ -1047,6 +1102,8 @@ mod tests {
                     rows: 2,
                     cols: 2,
                     truncated: false,
+                    frozen_rows: 0,
+                    frozen_cols: 0,
                     default_row_height: None,
                     default_col_width: None,
                 },
@@ -1194,6 +1251,8 @@ mod tests {
                     rows: cell_count,
                     cols: 1,
                     truncated: false,
+                    frozen_rows: 0,
+                    frozen_cols: 0,
                     default_row_height: None,
                     default_col_width: None,
                 },
@@ -1245,6 +1304,8 @@ mod tests {
                     rows: ROWS,
                     cols: COLS,
                     truncated: false,
+                    frozen_rows: 0,
+                    frozen_cols: 0,
                     default_row_height: None,
                     default_col_width: None,
                 },
@@ -1296,6 +1357,7 @@ mod tests {
                     d: cell.d.clone(),
                     f: cell.f.clone(),
                     fmt: cell.fmt.clone(),
+                    e: false,
                 });
             }
         }

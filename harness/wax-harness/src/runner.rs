@@ -24,7 +24,8 @@ use crate::roundtrip::{
     SofficeAvailability, SOFFICE_MAX_SOURCE_BYTES, SOFFICE_SUBSET_FILES, SOFFICE_SUBSET_SEED,
 };
 use crate::serve::{
-    detect_serve, run_serve_file, ServeAvailability, ServeFileConfig, ServeFileMetrics,
+    detect_serve, run_serve_file, FormulaProbe, ServeAvailability, ServeFileConfig,
+    ServeFileMetrics,
 };
 use crate::triage::render_triage;
 
@@ -431,7 +432,13 @@ fn process_entry(
         ));
     }
     if serve_available {
-        result.serve = Some(run_serve_entry(entry, config, export_smoke));
+        let probes = wax
+            .document
+            .as_ref()
+            .filter(|document| document.ok)
+            .map(|document| formula_probes(document, &entry.ext))
+            .unwrap_or_default();
+        result.serve = Some(run_serve_entry(entry, config, export_smoke, &probes));
     }
     result
 }
@@ -440,6 +447,7 @@ fn run_serve_entry(
     entry: &ManifestEntry,
     config: &RunnerConfig,
     export_smoke: bool,
+    formula_probes: &[FormulaProbe],
 ) -> ServeFileMetrics {
     let path = Path::new(&entry.path);
     let path = if path.is_absolute() {
@@ -453,7 +461,40 @@ fn run_serve_entry(
         file: &path,
         timeout: Duration::from_millis(config.timeout_ms),
         export_smoke,
+        formula_probes,
     })
+}
+
+fn formula_probes(document: &DumpDocument, extension: &str) -> Vec<FormulaProbe> {
+    if !matches!(extension.to_ascii_lowercase().as_str(), "xlsx" | "xlsm") {
+        return Vec::new();
+    }
+    let sheet_names = document
+        .sheets
+        .iter()
+        .map(|sheet| sheet.name.clone())
+        .collect::<Vec<_>>();
+    let mut probes = Vec::new();
+    for sheet in &document.sheets {
+        let Ok(sheet_index) = u32::try_from(sheet.index) else {
+            continue;
+        };
+        for cell in &sheet.cells {
+            let Some(formula) = cell.f.as_deref() else {
+                continue;
+            };
+            if wax_eval::is_supported_formula(formula, sheet_index, &sheet_names) {
+                probes.push(FormulaProbe {
+                    sheet: sheet.index as u64,
+                    r: cell.r,
+                    c: cell.c,
+                    formula: formula.to_owned(),
+                    cached: cell.v.clone(),
+                });
+            }
+        }
+    }
+    probes
 }
 
 fn internal_failure(entry: &ManifestEntry) -> FileMetrics {

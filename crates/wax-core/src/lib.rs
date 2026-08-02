@@ -150,6 +150,13 @@ pub struct Sheet {
     pub truncated: bool,
     pub merges: Vec<String>,
     pub cells: Vec<Cell>,
+    /// Number of frozen leading rows in the sheet view (v0.4). Additive in
+    /// dump schema 1 and omitted when zero so legacy dump bytes stay stable.
+    #[serde(default, skip_serializing_if = "is_zero_u32", rename = "frozenRows")]
+    pub frozen_rows: u32,
+    /// Number of frozen leading columns in the sheet view (v0.4).
+    #[serde(default, skip_serializing_if = "is_zero_u32", rename = "frozenCols")]
+    pub frozen_cols: u32,
     /// Explicit column widths. Additive in schema 1: empty serializes to
     /// nothing, so pre-W4 dumps stay byte-identical.
     #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "colInfos")]
@@ -178,6 +185,10 @@ pub struct Sheet {
     pub default_col_width: Option<f64>,
 }
 
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DumpError {
     pub code: String,
@@ -199,6 +210,10 @@ pub struct Document {
     pub truncated: bool,
     pub sheets: Vec<Sheet>,
     pub warnings: Vec<String>,
+    /// Workbook date epoch used internally by evaluation. It is deliberately
+    /// outside dump schema 1 so existing normalized JSON remains byte-stable.
+    #[serde(skip)]
+    pub date_1904: bool,
     /// Workbook-wide style table referenced by [`Cell::s`]. Additive in
     /// schema 1: empty serializes to nothing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -226,6 +241,7 @@ impl Document {
             truncated,
             sheets,
             warnings,
+            date_1904: false,
             styles: Vec::new(),
         }
     }
@@ -249,6 +265,7 @@ impl Document {
             truncated: false,
             sheets: Vec::new(),
             warnings,
+            date_1904: false,
             styles: Vec::new(),
         }
     }
@@ -287,12 +304,15 @@ mod tests {
                     fmt: None,
                     s: None,
                 }],
+                frozen_rows: 0,
+                frozen_cols: 0,
                 col_infos: Vec::new(),
                 row_infos: Vec::new(),
                 default_row_height: None,
                 default_col_width: None,
             }],
             warnings: Vec::new(),
+            date_1904: false,
             styles: Vec::new(),
         }
     }

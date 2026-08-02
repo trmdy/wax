@@ -14,6 +14,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 tempfile = "3.20.0"
 wax-read = { path = "../crates/wax-read" }
+wax-eval = { path = "../crates/wax-eval" }
 
 [[bin]]
 name = "container_preflight"
@@ -32,6 +33,13 @@ bench = false
 [[bin]]
 name = "legacy_xls_reader"
 path = "fuzz_targets/legacy_xls_reader.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "formula_parser"
+path = "fuzz_targets/formula_parser.rs"
 test = false
 doc = false
 bench = false
