@@ -257,6 +257,45 @@ fn export_overrides_file_applies_edits_and_reports_the_count() {
 }
 
 #[test]
+fn export_overrides_file_authors_a_real_formula_with_engine_cache() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let output_path = temp.path().join("authored.xlsx");
+    let overrides_path = temp.path().join("authored-overrides.json");
+    std::fs::write(
+        &overrides_path,
+        r#"[{"sheet":0,"r":0,"c":7,"f":"=1+2","v":999}]"#,
+    )
+    .expect("authored overrides file should write");
+
+    let output = wax()
+        .args(["export", "--json"])
+        .arg(fixture_path())
+        .arg(&output_path)
+        .args(["--format", "xlsx", "--overrides"])
+        .arg(&overrides_path)
+        .output()
+        .expect("wax should execute");
+    let result = json_stdout(&output);
+    assert_eq!(result["ok"], true, "{result}");
+    assert_eq!(result["applied"], 1, "{result}");
+
+    let dumped = wax()
+        .args(["dump", "--json"])
+        .arg(&output_path)
+        .output()
+        .expect("wax should execute");
+    let document = json_stdout(&dumped);
+    let authored = document["sheets"][0]["cells"]
+        .as_array()
+        .expect("cell array")
+        .iter()
+        .find(|cell| cell["r"] == 0 && cell["c"] == 7)
+        .expect("authored formula cell should reopen");
+    assert_eq!(authored["f"], "1+2");
+    assert_eq!(authored["v"], 3.0);
+}
+
+#[test]
 fn export_success_reports_json_and_produces_a_readable_workbook() {
     let temp = tempfile::tempdir().expect("temporary directory");
     let output_path = temp.path().join("copy.xlsx");

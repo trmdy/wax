@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-08-02T21:47:23Z",
+  "generatedAt": "2026-08-04T06:29:05Z",
   "filesAttempted": 2044,
   "filesSkipped": 0,
   "metrics": {
@@ -60,22 +60,22 @@
     },
     "parseTimeMs": {
       "wax": {
-        "p50": 1,
-        "p95": 11
+        "p50": 2,
+        "p95": 25
       },
       "sheetjs": {
-        "p50": 7,
-        "p95": 36
+        "p50": 11,
+        "p95": 117
       }
     },
     "peakRssBytes": {
       "wax": {
-        "p50": 7979008,
-        "max": 712474624
+        "p50": 7913472,
+        "max": 712343552
       },
       "sheetjs": {
-        "p50": 92569600,
-        "max": 1248116736
+        "p50": 93061120,
+        "max": 1263616000
       }
     },
     "windowLatencyMs": {
@@ -88,12 +88,12 @@
       "percent": 96.0371819960861
     },
     "windowLatencyPercentilesMs": {
-      "p50": 15.557416,
-      "p95": 45.119583999999996
+      "p50": 21.756125,
+      "p95": 41.535500000000006
     },
     "servePeakRssBytes": {
-      "p50": 8306688,
-      "max": 826294272
+      "p50": 8290304,
+      "max": 805994496
     },
     "serveStatus": {
       "status": "available",

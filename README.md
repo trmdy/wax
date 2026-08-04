@@ -22,7 +22,7 @@ Download `SHA256SUMS.txt` and the archive
 
 ```bash
 set -euo pipefail
-version=0.4.0
+version=0.5.0
 platform=macos-arm64
 archive="wax-v${version}-${platform}.tar.gz"
 base="https://github.com/trmdy/wax/releases/download/v${version}"
@@ -35,7 +35,7 @@ tar -xzf "$archive" -C "wax-v${version}"
 "wax-v${version}/wax" --version
 ```
 
-The final command prints `wax 0.4.0 (proto 0)` for the v0.4.0 release. Move
+The final command prints `wax 0.5.0 (proto 0)` for the v0.5.0 release. Move
 the binary to a directory on `PATH` if desired.
 
 To build instead, install Rust and run:
@@ -70,13 +70,13 @@ The main workbook lifecycle is:
 Successful `version` and `open` responses advertise capabilities additively
 in `caps` (absence means no capabilities); the `--version` line never
 carries them. The current server advertises
-`caps:["exportOverrides","sheetSizeInfos","exportSizeOverrides","formulaEval","sheetView"]`.
+`caps:["exportOverrides","sheetSizeInfos","exportSizeOverrides","formulaEval","sheetView","authoredFormulas"]`.
 
 This is a representative v0 session (one object per line):
 
 ```json
 {"id":1,"op":"open","path":"/absolute/path/book.xlsx","maxCells":5000000,"maxBytes":104857600,"timeoutMs":30000}
-{"id":1,"ok":true,"proto":0,"caps":["exportOverrides","sheetSizeInfos","exportSizeOverrides","formulaEval","sheetView"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false,"colInfos":[{"c":1,"width":22.5}],"rowInfos":[{"r":0,"height":27.75}],"defaultRowHeight":15.0,"defaultColWidth":8.43,"frozenRows":1,"frozenCols":0}],"warnings":[]}
+{"id":1,"ok":true,"proto":0,"caps":["exportOverrides","sheetSizeInfos","exportSizeOverrides","formulaEval","sheetView","authoredFormulas"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false,"colInfos":[{"c":1,"width":22.5}],"rowInfos":[{"r":0,"height":27.75}],"defaultRowHeight":15.0,"defaultColWidth":8.43,"frozenRows":1,"frozenCols":0}],"warnings":[]}
 {"id":2,"op":"window","handle":"h1","sheet":0,"r0":0,"c0":0,"nr":2,"nc":2}
 {"id":2,"ok":true,"sheet":0,"r0":0,"c0":0,"nr":2,"nc":2,"rows":[[{"t":"s","v":"Item","d":"Item"},{"t":"s","v":"Cost","d":"Cost"}],[{"t":"s","v":"Tea","d":"Tea"},{"t":"n","v":12.5,"d":"12.50"}]],"merges":[]}
 {"id":3,"op":"close","handle":"h1"}
@@ -101,6 +101,15 @@ are last-wins, and the response reports the post-collapse count in
 caps. `format:"csv"` accepts the same field, applies only the exported
 sheet's overrides, and ignores edits for other (valid) sheets. The same
 edits work offline via `wax export --overrides <json-file>`.
+
+Under `authoredFormulas`, an override may carry
+`{"sheet":0,"r":4,"c":2,"f":"=SUM(A1:A3)","v":6}`. The optional `v`
+is only the caller's advisory cache: wax parses and computes `f`, adds it to
+the request-local dependency graph, and uses the engine result. Recalc and
+export both support this shape; XLSX export preserves a real formula with a
+fresh cached value. Without `f`, all v0.2 literal rules remain unchanged.
+Unknown functions, invalid syntax, and cycles are cell errors (`#NAME?`,
+`#VALUE!`, and `#CYCLE!`) rather than request failures.
 
 Under `sheetSizeInfos`, every `open`/`meta` sheet entry always carries four
 size fields: `colInfos` (`[{c,width}]`, Excel character units, explicit
@@ -134,12 +143,14 @@ outside this scalar MVP and likewise remain file-cached. Cycles return
 `#CYCLE!`, and the one-second wall-clock evaluation budget degrades loudly
 through `warnings` instead of hanging.
 
-`recalc` accepts the same override entries as export and returns only changed
-downstream evaluated cells, without mutating later windows or exports:
+`recalc` accepts the same override entries as export and returns changed
+override cells plus downstream evaluated cells, without mutating later windows
+or exports. Literal overrides retain the cell's format and recompute `d`;
+unformatted authored formulas render a General display:
 
 ```json
 {"id":8,"op":"recalc","handle":"h1","overrides":[{"sheet":0,"r":1,"c":0,"v":10}]}
-{"id":8,"ok":true,"changed":[{"sheet":0,"r":1,"c":2,"v":13.0,"d":null,"e":true}],"evaluated":1,"skipped":0,"truncated":false,"warnings":[]}
+{"id":8,"ok":true,"changed":[{"sheet":0,"r":1,"c":0,"v":10.0,"d":null,"e":false},{"sheet":0,"r":1,"c":2,"v":13.0,"d":null,"e":true}],"evaluated":1,"skipped":0,"truncated":false,"warnings":[]}
 ```
 
 The changed set is capped at 50,000 cells with `truncated:true` and a warning

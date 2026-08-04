@@ -1052,12 +1052,14 @@ mod tests {
                 r: 0,
                 c: 0,
                 v: Some(CellValue::Number(1.0)),
+                f: None,
             },
             CellOverride {
                 sheet: 1,
                 r: 0,
                 c: 0,
                 v: Some(CellValue::Number(2.0)),
+                f: None,
             },
         ];
         assert_eq!(

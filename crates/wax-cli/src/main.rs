@@ -236,8 +236,9 @@ fn run_export(command: ExportCommand) -> i32 {
     }
 }
 
-/// Load an overrides JSON file (an array of `{sheet, r, c, v}` objects, the
-/// same shape the serve `export` op accepts).
+/// Load an overrides JSON file (literal `{sheet, r, c, v}` or authored
+/// formula `{sheet, r, c, f, v?}` entries, the same shape the serve
+/// `export` op accepts).
 fn load_overrides(path: &Path) -> Result<Vec<wax_core::CellOverride>, (String, String)> {
     let raw = std::fs::read_to_string(path).map_err(|error| {
         (

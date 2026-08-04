@@ -30,6 +30,10 @@ pub const CAP_FORMULA_EVAL: &str = "formulaEval";
 /// metadata on every `open`/`meta` sheet entry (v0.4 contract).
 pub const CAP_SHEET_VIEW: &str = "sheetView";
 
+/// Capability string advertising optional authored-formula sources (`f`) on
+/// recalc/export override entries (v0.5 contract).
+pub const CAP_AUTHORED_FORMULAS: &str = "authoredFormulas";
+
 /// Every capability this server advertises on `version` and `open`
 /// responses. Additive — absence of `caps` means no capabilities; the
 /// `--version` line never carries capabilities (release-workflow contract).
@@ -40,6 +44,7 @@ pub fn server_caps() -> Vec<String> {
         CAP_EXPORT_SIZE_OVERRIDES.to_owned(),
         CAP_FORMULA_EVAL.to_owned(),
         CAP_SHEET_VIEW.to_owned(),
+        CAP_AUTHORED_FORMULAS.to_owned(),
     ]
 }
 pub const SERVE_DEFAULT_MAX_CELLS: u64 = 5_000_000;
@@ -271,11 +276,12 @@ pub fn parse_request(line: &str) -> Result<Request, RequestError> {
     }
 }
 
-/// Parse an export `overrides` value: an array of `{sheet, r, c, v}` objects
-/// with zero-based u32 indices and `v` a JSON number, string, boolean, or
-/// `null` (clear). Errors are `bad_request`-grade messages naming the cap or
-/// the offending entry/field (contract amendment A5). Also used by the CLI
-/// `export --overrides` path, so the message carries no request id.
+/// Parse a recalc/export `overrides` value. Every entry has zero-based u32
+/// coordinates and either a literal `v` (the frozen v0.2 shape) or an
+/// authored formula string `f` with an optional advisory `v` cache. Errors
+/// are `bad_request`-grade messages naming the cap or offending entry/field
+/// (contract amendment A5). Also used by the CLI `export --overrides` path,
+/// so the message carries no request id.
 pub fn parse_overrides(value: &Value) -> Result<Vec<CellOverride>, String> {
     let entries = value
         .as_array()
@@ -300,6 +306,13 @@ pub fn parse_overrides(value: &Value) -> Result<Vec<CellOverride>, String> {
                     .and_then(|value| u32::try_from(value).ok())
                     .ok_or_else(|| format!("overrides[{index}].{field} must be a u32"))
             };
+            let f = match object.get("f") {
+                Some(Value::String(formula)) => Some(formula.clone()),
+                Some(_) => {
+                    return Err(format!("overrides[{index}].f must be a string"));
+                }
+                None => None,
+            };
             let v = match object.get("v") {
                 Some(Value::Null) => None,
                 Some(Value::Number(number)) => {
@@ -311,6 +324,7 @@ pub fn parse_overrides(value: &Value) -> Result<Vec<CellOverride>, String> {
                 }
                 Some(Value::String(text)) => Some(CellValue::Text(text.clone())),
                 Some(Value::Bool(boolean)) => Some(CellValue::Bool(*boolean)),
+                None if f.is_some() => None,
                 None | Some(Value::Array(_)) | Some(Value::Object(_)) => {
                     return Err(format!(
                         "overrides[{index}].v must be a number, string, boolean, or null"
@@ -322,6 +336,7 @@ pub fn parse_overrides(value: &Value) -> Result<Vec<CellOverride>, String> {
                 r: coordinate("r")?,
                 c: coordinate("c")?,
                 v,
+                f,
             })
         })
         .collect()
@@ -748,24 +763,28 @@ mod tests {
                     r: 1,
                     c: 2,
                     v: Some(CellValue::Number(42.5)),
+                    f: None,
                 },
                 CellOverride {
                     sheet: 1,
                     r: 0,
                     c: 0,
                     v: Some(CellValue::Text("=SUM(A1:A2)".to_owned())),
+                    f: None,
                 },
                 CellOverride {
                     sheet: 0,
                     r: 3,
                     c: 4,
                     v: Some(CellValue::Bool(true)),
+                    f: None,
                 },
                 CellOverride {
                     sheet: 0,
                     r: 5,
                     c: 6,
                     v: None,
+                    f: None,
                 },
             ]
         );
@@ -778,6 +797,27 @@ mod tests {
             panic!("expected export request");
         };
         assert!(overrides.is_empty());
+    }
+
+    #[test]
+    fn authored_formula_overrides_accept_optional_advisory_values() {
+        let overrides = parse_overrides(&serde_json::json!([
+            {"sheet":0,"r":1,"c":2,"f":"=SUM(A1:A2)"},
+            {"sheet":0,"r":2,"c":2,"f":"=A1*2","v":999}
+        ]))
+        .expect("authored formulas should parse");
+        assert_eq!(overrides[0].f.as_deref(), Some("=SUM(A1:A2)"));
+        assert_eq!(overrides[0].v, None);
+        assert_eq!(overrides[1].f.as_deref(), Some("=A1*2"));
+        assert_eq!(overrides[1].v, Some(CellValue::Number(999.0)));
+
+        // The discriminator is `f`, never a leading equals in literal `v`.
+        let literal = parse_overrides(&serde_json::json!([
+            {"sheet":0,"r":0,"c":0,"v":"=A1*2"}
+        ]))
+        .expect("equals-prefixed strings remain literals");
+        assert_eq!(literal[0].f, None);
+        assert_eq!(literal[0].v, Some(CellValue::Text("=A1*2".to_owned())));
     }
 
     #[test]
@@ -807,6 +847,14 @@ mod tests {
             ),
             (
                 r#""overrides":[{"sheet":0,"r":0,"c":0,"v":{}}]"#,
+                "overrides[0].v must be a number, string, boolean, or null",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":0,"c":0,"f":7}]"#,
+                "overrides[0].f must be a string",
+            ),
+            (
+                r#""overrides":[{"sheet":0,"r":0,"c":0,"f":"=1","v":[]}]"#,
                 "overrides[0].v must be a number, string, boolean, or null",
             ),
         ] {
@@ -868,6 +916,7 @@ mod tests {
         assert_eq!(overrides.len(), 2);
         assert_eq!(overrides[0].v, Some(CellValue::Number(42.5)));
         assert_eq!(overrides[1].v, None);
+        assert_eq!(overrides[1].f, None);
 
         let response = serde_json::to_value(RecalcResponse {
             id: 17,
@@ -998,7 +1047,8 @@ mod tests {
                 "sheetSizeInfos".to_owned(),
                 "exportSizeOverrides".to_owned(),
                 "formulaEval".to_owned(),
-                "sheetView".to_owned()
+                "sheetView".to_owned(),
+                "authoredFormulas".to_owned()
             ]
         );
         let version = serde_json::to_value(VersionResponse {
@@ -1016,7 +1066,8 @@ mod tests {
                 "sheetSizeInfos",
                 "exportSizeOverrides",
                 "formulaEval",
-                "sheetView"
+                "sheetView",
+                "authoredFormulas"
             ])
         );
         let open = serde_json::to_value(OpenResponse {
@@ -1037,7 +1088,8 @@ mod tests {
                 "sheetSizeInfos",
                 "exportSizeOverrides",
                 "formulaEval",
-                "sheetView"
+                "sheetView",
+                "authoredFormulas"
             ])
         );
     }
