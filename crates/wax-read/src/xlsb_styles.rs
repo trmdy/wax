@@ -10,13 +10,14 @@ use zip::ZipWriter;
 use super::{
     builtin_format, explicit_format, parse_relationships, read_part, read_part_optional,
     relationships_path, resolve_part, zip_lookup, zip_part_key, ColumnDeclaration, RowDeclaration,
-    SheetDefaults, SheetSizes,
+    SheetDefaults, SheetSizes, SheetView,
 };
 
 #[derive(Default)]
 pub(super) struct XlsbStyleSupplement {
     sheets: HashMap<String, HashMap<(u32, u32), XlsbCellMetadata>>,
     sizes: HashMap<String, SheetSizes>,
+    views: HashMap<String, SheetView>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -64,6 +65,7 @@ impl XlsbStyleSupplement {
 
         let mut sheets = HashMap::new();
         let mut sizes = HashMap::new();
+        let mut views = HashMap::new();
         for sheet in parse_workbook_sheets(&workbook)? {
             let Some(target) = by_id.get(sheet.relationship_id.as_str()) else {
                 continue;
@@ -72,11 +74,16 @@ impl XlsbStyleSupplement {
             let Some(bytes) = read_part_optional(&mut archive, &lookup, &sheet_path)? else {
                 continue;
             };
-            let (cells, sheet_sizes) = parse_sheet_styles(&bytes, &formats)?;
+            let (cells, sheet_sizes, view) = parse_sheet_styles(&bytes, &formats)?;
             sheets.insert(sheet.name.clone(), cells);
-            sizes.insert(sheet.name, sheet_sizes);
+            sizes.insert(sheet.name.clone(), sheet_sizes);
+            views.insert(sheet.name, view);
         }
-        Ok(Self { sheets, sizes })
+        Ok(Self {
+            sheets,
+            sizes,
+            views,
+        })
     }
 
     pub(super) fn cell(&self, sheet: &str, position: (u32, u32)) -> Option<&str> {
@@ -89,6 +96,10 @@ impl XlsbStyleSupplement {
 
     pub(super) fn sizes(&self, sheet: &str) -> Option<&SheetSizes> {
         self.sizes.get(sheet)
+    }
+
+    pub(super) fn sheet_view(&self, sheet: &str) -> SheetView {
+        self.views.get(sheet).copied().unwrap_or_default()
     }
 }
 
@@ -241,7 +252,7 @@ fn parse_styles(bytes: &[u8]) -> Result<Vec<Option<String>>, String> {
     Ok(formats)
 }
 
-type ParsedXlsbSheet = (HashMap<(u32, u32), XlsbCellMetadata>, SheetSizes);
+type ParsedXlsbSheet = (HashMap<(u32, u32), XlsbCellMetadata>, SheetSizes, SheetView);
 
 fn parse_sheet_styles(bytes: &[u8], formats: &[Option<String>]) -> Result<ParsedXlsbSheet, String> {
     let mut styles = HashMap::new();
@@ -252,9 +263,21 @@ fn parse_sheet_styles(bytes: &[u8], formats: &[Option<String>]) -> Result<Parsed
     let mut columns = Vec::<ColumnDeclaration>::new();
     let mut defaults = SheetDefaults::default();
     let mut default_row_twips = None::<u16>;
+    let mut view = SheetView::default();
     for record in BinaryRecordIter::new(bytes) {
         let record = record?;
         match record.kind {
+            // BrtPane ([MS-XLSB] 2.4.723, record 151): the two Xnum fields
+            // become column/row counts only when either frozen flag is set.
+            // Split-only twip positions intentionally remain zero here.
+            0x0097 if record.data.len() >= 29 && record.data[28] & 0x03 != 0 => {
+                let x =
+                    f64::from_le_bytes(record.data[0..8].try_into().expect("eight bytes checked"));
+                let y =
+                    f64::from_le_bytes(record.data[8..16].try_into().expect("eight bytes checked"));
+                view.frozen_cols = frozen_count(x);
+                view.frozen_rows = frozen_count(y);
+            }
             // BrtRowHdr ([MS-XLSB] 2.4.757): rw(4), ixfe(4), miyRw(2, twips),
             // then a flag block whose byte 11 carries fUnsynced (0x20).
             0x0000 if record.data.len() >= 4 => {
@@ -350,7 +373,16 @@ fn parse_sheet_styles(bytes: &[u8], formats: &[Option<String>]) -> Result<Parsed
             columns,
             defaults,
         },
+        view,
     ))
+}
+
+fn frozen_count(value: f64) -> u32 {
+    if value.is_finite() && value >= 0.0 && value.fract() == 0.0 && value <= f64::from(u32::MAX) {
+        value as u32
+    } else {
+        0
+    }
 }
 
 fn parse_nullable_wide_string(bytes: &[u8]) -> Result<Option<(String, usize)>, String> {
@@ -510,7 +542,7 @@ mod tests {
         cell.extend_from_slice(&[1, 0, 0, 0]);
         cell.extend_from_slice(&42.5_f64.to_le_bytes());
         push_record(&mut sheet, 0x0005, &cell);
-        let (cells, _) = parse_sheet_styles(&sheet, &formats).unwrap();
+        let (cells, _, _) = parse_sheet_styles(&sheet, &formats).unwrap();
         assert_eq!(
             cells.get(&(4, 2)),
             Some(&XlsbCellMetadata {
@@ -531,7 +563,7 @@ mod tests {
         formula_error.extend_from_slice(&[0, 0]);
         push_record(&mut sheet, 0x000B, &formula_error);
 
-        let (cells, _) = parse_sheet_styles(&sheet, &[]).unwrap();
+        let (cells, _, _) = parse_sheet_styles(&sheet, &[]).unwrap();
         assert_eq!(
             cells.get(&(6, 2)),
             Some(&XlsbCellMetadata {
@@ -551,7 +583,7 @@ mod tests {
         formula_string.extend_from_slice(&0_u32.to_le_bytes());
         push_record(&mut sheet, 0x0008, &formula_string);
 
-        let (cells, _) = parse_sheet_styles(&sheet, &[]).unwrap();
+        let (cells, _, _) = parse_sheet_styles(&sheet, &[]).unwrap();
         assert_eq!(
             cells.get(&(6, 2)),
             Some(&XlsbCellMetadata {
@@ -592,6 +624,31 @@ mod tests {
         assert_eq!(sheets[0].relationship_id, "rId1");
         assert_eq!(sheets[0].name, "Sheet1");
         assert_eq!(rewritten.len(), workbook.len() - 4);
+    }
+
+    #[test]
+    fn brt_pane_reports_frozen_counts_and_ignores_split_twips() {
+        let mut pane = Vec::new();
+        pane.extend_from_slice(&2_f64.to_le_bytes());
+        pane.extend_from_slice(&3_f64.to_le_bytes());
+        pane.extend_from_slice(&[0; 12]);
+        pane.push(0x02);
+        let mut frozen = Vec::new();
+        push_record(&mut frozen, 0x0097, &pane);
+        let (_, _, view) = parse_sheet_styles(&frozen, &[]).unwrap();
+        assert_eq!(
+            view,
+            SheetView {
+                frozen_rows: 3,
+                frozen_cols: 2,
+            }
+        );
+
+        pane[28] = 0;
+        let mut split = Vec::new();
+        push_record(&mut split, 0x0097, &pane);
+        let (_, _, view) = parse_sheet_styles(&split, &[]).unwrap();
+        assert_eq!(view, SheetView::default());
     }
 
     fn push_record(target: &mut Vec<u8>, kind: u16, data: &[u8]) {

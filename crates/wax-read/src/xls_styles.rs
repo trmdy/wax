@@ -7,6 +7,7 @@ use encoding_rs::{Encoding, WINDOWS_1252};
 
 use super::{
     builtin_format, explicit_format, ColumnDeclaration, RowDeclaration, SheetDefaults, SheetSizes,
+    SheetView,
 };
 
 type CellPosition = (u32, u32);
@@ -14,6 +15,7 @@ type ParsedSheetStyles = (
     HashMap<CellPosition, String>,
     HashSet<CellPosition>,
     SheetSizes,
+    SheetView,
 );
 
 #[derive(Default)]
@@ -21,6 +23,7 @@ pub(super) struct XlsStyleSupplement {
     sheets: Vec<HashMap<(u32, u32), String>>,
     empty_formula_cells: Vec<HashSet<(u32, u32)>>,
     sizes: Vec<SheetSizes>,
+    views: Vec<SheetView>,
 }
 
 impl XlsStyleSupplement {
@@ -57,6 +60,10 @@ impl XlsStyleSupplement {
 
     pub(super) fn sizes(&self, sheet_index: usize) -> Option<&SheetSizes> {
         self.sizes.get(sheet_index)
+    }
+
+    pub(super) fn sheet_view(&self, sheet_index: usize) -> SheetView {
+        self.views.get(sheet_index).copied().unwrap_or_default()
     }
 }
 
@@ -112,23 +119,27 @@ fn parse_workbook_stream(stream: &[u8]) -> Result<XlsStyleSupplement, String> {
     let mut sheets = Vec::with_capacity(sheet_offsets.len());
     let mut empty_formula_cells = Vec::with_capacity(sheet_offsets.len());
     let mut sizes = Vec::with_capacity(sheet_offsets.len());
+    let mut views = Vec::with_capacity(sheet_offsets.len());
     for offset in sheet_offsets {
         if offset >= stream.len() {
             sheets.push(HashMap::new());
             empty_formula_cells.push(HashSet::new());
             sizes.push(SheetSizes::default());
+            views.push(SheetView::default());
             continue;
         }
-        let (styles, empty_formulas, sheet_sizes) =
+        let (styles, empty_formulas, sheet_sizes, view) =
             parse_sheet_styles(&stream[offset..], &xf_formats)?;
         sheets.push(styles);
         empty_formula_cells.push(empty_formulas);
         sizes.push(sheet_sizes);
+        views.push(view);
     }
     Ok(XlsStyleSupplement {
         sheets,
         empty_formula_cells,
         sizes,
+        views,
     })
 }
 
@@ -146,6 +157,8 @@ fn parse_sheet_styles(
     let mut default_row_twips = None::<u16>;
     let mut default_col_chars = None::<u16>;
     let mut standard_width_256 = None::<u16>;
+    let mut frozen = false;
+    let mut pane = None::<(u32, u32)>;
     let mut records = BiffRecordIter::new(stream);
     while let Some(record) = records.next_record()? {
         // A string FORMULA may be followed by SHRFMLA (0x04BC), ARRAY
@@ -232,6 +245,21 @@ fn parse_sheet_styles(
                     });
                 }
             }
+            // Window2 ([MS-XLS] 2.4.345): fFrozen is bit 3. Pane split
+            // positions are counts only in this mode; ordinary split panes
+            // contain display units and intentionally report zero.
+            0x023E if record.data.len() >= 2 => {
+                let flags = u16::from_le_bytes([record.data[0], record.data[1]]);
+                frozen = flags & 0x0008 != 0;
+            }
+            // Pane ([MS-XLS] 2.4.189): x is columns and y is rows when
+            // Window2 marks the view frozen.
+            0x0041 if record.data.len() >= 4 => {
+                pane = Some((
+                    u16::from_le_bytes([record.data[0], record.data[1]]) as u32,
+                    u16::from_le_bytes([record.data[2], record.data[3]]) as u32,
+                ));
+            }
             // MulRk: row, first column, repeated (XF, RK), last column.
             0x00BD if record.data.len() >= 12 => {
                 let row = u16::from_le_bytes([record.data[0], record.data[1]]) as u32;
@@ -279,6 +307,15 @@ fn parse_sheet_styles(
             rows,
             columns,
             defaults,
+        },
+        if frozen {
+            let (frozen_cols, frozen_rows) = pane.unwrap_or_default();
+            SheetView {
+                frozen_rows,
+                frozen_cols,
+            }
+        } else {
+            SheetView::default()
         },
     ))
 }
@@ -510,6 +547,29 @@ mod tests {
             parse_format(&data, BiffVersion::Biff8, WINDOWS_1252),
             Some((164, "€0".to_owned()))
         );
+    }
+
+    #[test]
+    fn biff_panes_report_counts_only_when_window_is_frozen() {
+        let mut frozen = Vec::new();
+        push_record(&mut frozen, 0x023E, &0x0008_u16.to_le_bytes());
+        push_record(&mut frozen, 0x0041, &[2, 0, 3, 0, 0, 0, 0, 0, 0, 0]);
+        push_record(&mut frozen, 0x000A, &[]);
+        let (_, _, _, view) = parse_sheet_styles(&frozen, &[]).unwrap();
+        assert_eq!(
+            view,
+            SheetView {
+                frozen_rows: 3,
+                frozen_cols: 2,
+            }
+        );
+
+        let mut split = Vec::new();
+        push_record(&mut split, 0x023E, &0_u16.to_le_bytes());
+        push_record(&mut split, 0x0041, &[0xB0, 4, 0x84, 3, 0, 0, 0, 0, 0, 0]);
+        push_record(&mut split, 0x000A, &[]);
+        let (_, _, _, view) = parse_sheet_styles(&split, &[]).unwrap();
+        assert_eq!(view, SheetView::default());
     }
 
     fn push_record(target: &mut Vec<u8>, kind: u16, data: &[u8]) {

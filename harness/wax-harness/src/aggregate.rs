@@ -26,6 +26,10 @@ pub struct AggregateMetrics {
     pub display_string_match: RatioMetric,
     pub formula_fidelity: RatioMetric,
     pub cached_result_fidelity: RatioMetric,
+    #[serde(default)]
+    pub formula_cells_evaluated: RatioMetric,
+    #[serde(default)]
+    pub evaluated_cache_agreement: RatioMetric,
     pub parse_time_ms: ToolPercentileMetrics,
     pub peak_rss_bytes: ToolRssMetrics,
     pub window_latency_ms: ToolNullableMetrics,
@@ -242,6 +246,26 @@ pub fn aggregate_with_serve_and_round_trip(
         .filter_map(|result| result.serve.as_ref())
         .filter(|serve| serve.open_ok)
         .count() as u64;
+    let formula_covered = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .map(|serve| serve.formula_eval.covered)
+        .sum();
+    let formula_evaluated = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .map(|serve| serve.formula_eval.evaluated)
+        .sum();
+    let cache_compared = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .map(|serve| serve.formula_eval.cache_compared)
+        .sum();
+    let cache_agreed = results
+        .iter()
+        .filter_map(|result| result.serve.as_ref())
+        .map(|serve| serve.formula_eval.cache_agreed)
+        .sum();
     let serve_was_available = serve_availability.is_available();
 
     Scoreboard {
@@ -262,6 +286,8 @@ pub fn aggregate_with_serve_and_round_trip(
             display_string_match: RatioMetric::from_count(display_string_match),
             formula_fidelity: RatioMetric::from_count(formula_fidelity),
             cached_result_fidelity: RatioMetric::from_count(cached_result_fidelity),
+            formula_cells_evaluated: RatioMetric::new(formula_evaluated, formula_covered),
+            evaluated_cache_agreement: RatioMetric::new(cache_agreed, cache_compared),
             parse_time_ms: ToolPercentileMetrics {
                 wax: percentiles(&wax_wall_times),
                 sheetjs: percentiles(&sheetjs_wall_times),
@@ -520,7 +546,9 @@ mod tests {
     };
     use crate::compare::{CountMetric, CoverageMetric, FileMetrics, ToolSummary};
     use crate::roundtrip::{RoundTripFailure, RoundTripFileMetrics, SofficeAvailability};
-    use crate::serve::{ServeAvailability, ServeFileMetrics, ServeRequestMetric};
+    use crate::serve::{
+        FormulaEvalMetric, ServeAvailability, ServeFileMetrics, ServeRequestMetric,
+    };
 
     fn file(
         ext: &str,
@@ -674,12 +702,26 @@ mod tests {
                 request(3, "window", 1.25),
             ],
             peak_rss_bytes: Some(100),
+            formula_eval: FormulaEvalMetric {
+                covered: 10,
+                evaluated: 9,
+                cache_compared: 8,
+                cache_agreed: 7,
+                disagreements: Vec::new(),
+            },
             ..ServeFileMetrics::default()
         });
         results[1].serve = Some(ServeFileMetrics {
             open_ok: false,
             requests: vec![request(1, "window", 3.75), request(2, "window", 2.5)],
             peak_rss_bytes: Some(200),
+            formula_eval: FormulaEvalMetric {
+                covered: 2,
+                evaluated: 1,
+                cache_compared: 1,
+                cache_agreed: 1,
+                disagreements: Vec::new(),
+            },
             ..ServeFileMetrics::default()
         });
 
@@ -705,6 +747,10 @@ mod tests {
         );
         assert_eq!(scoreboard.metrics.serve_peak_rss_bytes.p50, Some(100));
         assert_eq!(scoreboard.metrics.serve_peak_rss_bytes.max, Some(200));
+        assert_eq!(scoreboard.metrics.formula_cells_evaluated.matched, 10);
+        assert_eq!(scoreboard.metrics.formula_cells_evaluated.total, 12);
+        assert_eq!(scoreboard.metrics.evaluated_cache_agreement.matched, 8);
+        assert_eq!(scoreboard.metrics.evaluated_cache_agreement.total, 9);
     }
 
     #[test]

@@ -176,7 +176,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -848,13 +850,15 @@ dependencies = [
 
 [[package]]
 name = "wax-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "libc",
+ "rust_xlsxwriter",
  "serde_json",
  "sha2",
  "tempfile",
  "wax-core",
+ "wax-eval",
  "wax-proto",
  "wax-read",
  "wax-store",
@@ -863,15 +867,26 @@ dependencies = [
 
 [[package]]
 name = "wax-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
 ]
 
 [[package]]
+name = "wax-eval"
+version = "0.4.0"
+dependencies = [
+ "calamine",
+ "chrono",
+ "wax-core",
+ "wax-fmt",
+ "wax-store",
+]
+
+[[package]]
 name = "wax-fmt"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -888,11 +903,12 @@ dependencies = [
  "serde_json",
  "tempfile",
  "wait-timeout",
+ "wax-eval",
 ]
 
 [[package]]
 name = "wax-proto"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -901,7 +917,7 @@ dependencies = [
 
 [[package]]
 name = "wax-read"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "calamine",
  "cfb",
@@ -918,19 +934,20 @@ dependencies = [
 
 [[package]]
 name = "wax-store"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "wax-core",
 ]
 
 [[package]]
 name = "wax-write"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "quick-xml 0.38.4",
  "rust_xlsxwriter",
  "tempfile",
  "wax-core",
+ "wax-eval",
  "wax-fmt",
  "wax-read",
  "wax-store",

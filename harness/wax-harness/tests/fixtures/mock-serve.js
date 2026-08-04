@@ -23,6 +23,21 @@ function success(id, fields = {}) {
 function windowResponse(request) {
   const nr = 64;
   const nc = 24;
+  const rows = Array.from({ length: nr }, () => Array(nc).fill(null));
+  for (const formulaCell of [
+    { sheet: 0, r: 1, c: 2, v: 5, f: "SUM(A2:B2)" },
+    { sheet: 0, r: 70, c: 25, v: 9, f: "A71+1" },
+  ]) {
+    if (
+      formulaCell.sheet === request.sheet &&
+      formulaCell.r >= request.r0 && formulaCell.r < request.r0 + nr &&
+      formulaCell.c >= request.c0 && formulaCell.c < request.c0 + nc
+    ) {
+      rows[formulaCell.r - request.r0][formulaCell.c - request.c0] = {
+        t: "n", v: formulaCell.v, f: formulaCell.f, e: true,
+      };
+    }
+  }
   return {
     id: request.id,
     ok: true,
@@ -31,7 +46,7 @@ function windowResponse(request) {
     c0: request.c0,
     nr,
     nc,
-    rows: Array.from({ length: nr }, () => Array(nc).fill(null)),
+    rows,
     merges: [],
   };
 }

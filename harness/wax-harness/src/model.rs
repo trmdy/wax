@@ -89,6 +89,10 @@ pub struct Sheet {
     pub default_row_height: Option<f64>,
     #[serde(default, rename = "defaultColWidth")]
     pub default_col_width: Option<f64>,
+    #[serde(default, rename = "frozenRows")]
+    pub frozen_rows: u32,
+    #[serde(default, rename = "frozenCols")]
+    pub frozen_cols: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

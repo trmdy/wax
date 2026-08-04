@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use wax_eval::{FormulaWorkbook, DEFAULT_EVAL_BUDGET};
 use wax_proto::PROTO_VERSION;
 use wax_read::{read_with_deadline, CalamineReader, ReaderOptions};
 use wax_store::WorkbookStore;
@@ -143,7 +144,7 @@ fn run_export(command: ExportCommand) -> i32 {
         },
     };
 
-    let warnings = document.warnings.clone();
+    let mut warnings = document.warnings.clone();
     let store = WorkbookStore::from_document(document);
     if store.sheet_meta(command.sheet).is_none() {
         return write_export_json(json!({
@@ -153,26 +154,72 @@ fn run_export(command: ExportCommand) -> i32 {
         }));
     }
 
+    let formula_supported = command
+        .input
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(extension.to_ascii_lowercase().as_str(), "xlsx" | "xlsm")
+        });
+    let (formula, opened_evaluation) = if formula_supported {
+        FormulaWorkbook::open(&store, DEFAULT_EVAL_BUDGET)
+    } else {
+        FormulaWorkbook::file_cached(&store)
+    };
+    warnings.extend(opened_evaluation.warnings);
+    // v0.2 A6: CSV ignores edits aimed at other sheets. Its formula layer
+    // must use the same scope or a cross-sheet formula could observe an edit
+    // the CSV writer intentionally does not apply.
+    let evaluation_overrides = overrides
+        .iter()
+        .filter(|entry| command.format == ExportFormat::Xlsx || entry.sheet == command.sheet)
+        .cloned()
+        .collect::<Vec<_>>();
+    let recalculated = match formula.recalculate(&store, &evaluation_overrides, DEFAULT_EVAL_BUDGET)
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            return write_export_json(json!({
+                "ok": false,
+                "code": error.code,
+                "msg": error.msg,
+            }))
+        }
+    };
+    warnings.extend(recalculated.warnings.clone());
+
     let cancel = AtomicBool::new(false);
     let result = match command.format {
-        ExportFormat::Xlsx => wax_write::write_xlsx_with_overrides(
+        ExportFormat::Xlsx => wax_write::write_xlsx_with_evaluated_overrides(
             &store,
             &command.output,
             &overrides,
             &wax_core::SizeOverrides::default(),
+            &recalculated.all_evaluated,
             &cancel,
         ),
-        ExportFormat::Csv => wax_write::write_csv_with_overrides(
+        ExportFormat::Csv => wax_write::write_csv_with_evaluated_overrides(
             &store,
             command.sheet,
             &command.output,
             &overrides,
             &wax_core::SizeOverrides::default(),
+            &recalculated.all_evaluated,
             &cancel,
         ),
     };
     match result {
         Ok(mut outcome) => {
+            let unevaluated = if command.format == ExportFormat::Csv {
+                formula.unevaluated_formulas_on_sheet(command.sheet)
+            } else {
+                formula.unevaluated_formulas()
+            };
+            if unevaluated > 0 {
+                outcome.dropped.push(format!(
+                    "formulas kept file-cached values ({unevaluated} unevaluated)"
+                ));
+            }
             outcome.dropped.extend(warnings);
             write_export_json(json!({
                 "ok": true,

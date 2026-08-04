@@ -1,6 +1,6 @@
 # wax compatibility scoreboard
 
-Generated: `2026-07-30T07:33:41Z`
+Generated: `2026-08-02T21:47:23Z`
 
 Corpus: 2044 attempted, 0 skipped.
 
@@ -13,11 +13,13 @@ Corpus: 2044 attempted, 0 skipped.
 | display-string match % | 97.50% (2833244/2905914) | reference |
 | formula fidelity % | 18.18% (82686/454931) | reference |
 | cached-result fidelity % | 58.76% (267326/454931) | reference |
+| formula cells evaluated % (covered set) | 100.00% (36103/36103) | n/a |
+| evaluated-vs-file-cached agreement % | 99.96% (36088/36103) | n/a |
 | p50 parse time | 1 ms | 7 ms |
-| p95 parse time | 9 ms | 33 ms |
-| peak RSS (p50 / max) | 3.33 MiB / 673.02 MiB | 95.91 MiB / 1.15 GiB |
-| serve peak RSS (p50 / max) | 3.56 MiB / 758.69 MiB | n/a |
-| window latency (p50 / p95) | 6.330 ms / 7.533 ms | n/a |
+| p95 parse time | 11 ms | 36 ms |
+| peak RSS (p50 / max) | 7.61 MiB / 679.47 MiB | 88.28 MiB / 1.16 GiB |
+| serve peak RSS (p50 / max) | 7.92 MiB / 788.02 MiB | n/a |
+| window latency (p50 / p95) | 15.557 ms / 45.120 ms | n/a |
 
 ## Writer round-trip
 

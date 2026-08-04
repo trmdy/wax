@@ -5,6 +5,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use rust_xlsxwriter::{Formula, Workbook};
 use serde_json::{json, Value};
 
 struct Server {
@@ -110,6 +111,21 @@ fn open(server: &mut Server, id: u64) -> Value {
     open_path(server, id, &fixture_path())
 }
 
+fn write_second_formula_fixture(path: &Path) {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet
+        .write_number(0, 0, 4.0)
+        .expect("precedent should write");
+    worksheet
+        .write_number(0, 1, 3.0)
+        .expect("second precedent should write");
+    worksheet
+        .write_formula(0, 2, Formula::new("A1*2+B1").set_result("11"))
+        .expect("formula should write");
+    workbook.save(path).expect("formula fixture should save");
+}
+
 #[test]
 fn open_and_meta_carry_declared_sizes_and_resolved_defaults() {
     let fixture = fixture_path().with_file_name("sizes.xlsx");
@@ -124,7 +140,9 @@ fn open_and_meta_carry_declared_sizes_and_resolved_defaults() {
             {"r":5,"height":45.0}
         ],
         "defaultRowHeight":14.4,
-        "defaultColWidth":9.14
+        "defaultColWidth":9.14,
+        "frozenRows":0,
+        "frozenCols":0
     }]);
     assert_eq!(opened["sheets"], expected);
 
@@ -198,7 +216,7 @@ fn version_handshake_and_eof_exit_zero() {
             "ok": true,
             "proto": 0,
             "version": env!("CARGO_PKG_VERSION"),
-            "caps": ["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"],
+            "caps": ["exportOverrides", "sheetSizeInfos", "exportSizeOverrides", "formulaEval", "sheetView"],
         })
     );
     assert!(server.eof().success());
@@ -211,7 +229,13 @@ fn open_meta_window_close_happy_path() {
     assert_eq!(opened["proto"], 0);
     assert_eq!(
         opened["caps"],
-        json!(["exportOverrides", "sheetSizeInfos", "exportSizeOverrides"])
+        json!([
+            "exportOverrides",
+            "sheetSizeInfos",
+            "exportSizeOverrides",
+            "formulaEval",
+            "sheetView"
+        ])
     );
     assert_eq!(opened["handle"], "h1");
     assert_eq!(opened["truncated"], false);
@@ -227,7 +251,9 @@ fn open_meta_window_close_happy_path() {
             ],
             "rowInfos":[],
             "defaultRowHeight":15.0,
-            "defaultColWidth":8.43
+            "defaultColWidth":8.43,
+            "frozenRows":0,
+            "frozenCols":0
         }])
     );
 
@@ -240,22 +266,29 @@ fn open_meta_window_close_happy_path() {
 
     server.send(json!({
         "id":12,"op":"window","handle":"h1","sheet":0,
-        "r0":0,"c0":0,"nr":2,"nc":3
+        "r0":0,"c0":0,"nr":2,"nc":6
     }));
     let window = server.receive();
     assert_eq!(window["id"], 12);
     assert_eq!(window["ok"], true);
     assert_eq!(
         (&window["r0"], &window["c0"], &window["nr"], &window["nc"]),
-        (&json!(0), &json!(0), &json!(2), &json!(3))
+        (&json!(0), &json!(0), &json!(2), &json!(6))
     );
     assert_eq!(window["rows"].as_array().expect("rows").len(), 2);
-    assert_eq!(window["rows"][0].as_array().expect("cells").len(), 3);
+    assert_eq!(window["rows"][0].as_array().expect("cells").len(), 6);
     assert_eq!(
         window["rows"][0][0],
         json!({"t":"s","v":"Hello shared","d":"Hello shared"})
     );
     assert_eq!(window["rows"][1][2]["f"], "SUM(A2:B2)");
+    assert_eq!(window["rows"][1][2]["v"], 5.0);
+    assert!(window["rows"][1][2].get("d").is_none());
+    assert_eq!(window["rows"][1][2]["e"], true);
+    assert_eq!(window["rows"][1][3]["e"], true);
+    assert_eq!(window["rows"][1][4]["v"], "#DIV/0!");
+    assert_eq!(window["rows"][1][4]["e"], true);
+    assert!(window["rows"][1][5].get("e").is_none());
     assert_eq!(window["merges"], json!([]));
 
     server.send(json!({"id":13,"op":"stats"}));
@@ -270,6 +303,144 @@ fn open_meta_window_close_happy_path() {
     let closed = server.receive();
     assert_eq!(closed["code"], "bad_handle");
     assert!(!closed["msg"].as_str().expect("message").contains("expired"));
+    assert!(server.eof().success());
+}
+
+#[test]
+fn recalc_is_incremental_side_effect_free_and_export_round_trips_it() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let out = temp.path().join("recalculated.xlsx");
+    let mut server = Server::start(&[]);
+    let opened = open(&mut server, 60);
+
+    server.send(json!({
+        "id":61,"op":"recalc","handle":opened["handle"],
+        "overrides":[
+            {"sheet":0,"r":1,"c":0,"v":4},
+            {"sheet":0,"r":1,"c":0,"v":10}
+        ]
+    }));
+    let recalculated = server.receive();
+    assert_eq!(
+        recalculated,
+        json!({
+            "id":61,"ok":true,
+            "changed":[{"sheet":0,"r":1,"c":2,"v":13.0,"d":null,"e":true}],
+            "evaluated":2,"skipped":0,"truncated":false,"warnings":[]
+        })
+    );
+
+    // Recalc is a hypothetical layer: it does not mutate the handle's
+    // subsequent windows.
+    server.send(json!({
+        "id":62,"op":"window","handle":opened["handle"],"sheet":0,
+        "r0":1,"c0":0,"nr":1,"nc":3
+    }));
+    let base = server.receive();
+    assert_eq!(base["rows"][0][0]["v"], 2.0);
+    assert_eq!(base["rows"][0][2]["v"], 5.0);
+    assert_eq!(base["rows"][0][2]["e"], true);
+
+    server.send(json!({
+        "id":63,"op":"export","handle":opened["handle"],"format":"xlsx","out":out,
+        "overrides":[{"sheet":0,"r":1,"c":0,"v":10}]
+    }));
+    let exported = server.receive();
+    assert_eq!(exported["ok"], true, "{exported}");
+    assert_eq!(exported["applied"], 1);
+
+    let reopened = open_path(&mut server, 64, &out);
+    server.send(json!({
+        "id":65,"op":"window","handle":reopened["handle"],"sheet":0,
+        "r0":1,"c0":0,"nr":1,"nc":3
+    }));
+    let round_trip = server.receive();
+    assert_eq!(round_trip["rows"][0][0]["v"], 10.0);
+    assert_eq!(round_trip["rows"][0][2]["f"], "SUM(A2:B2)");
+    assert_eq!(round_trip["rows"][0][2]["v"], 13.0);
+    assert_eq!(round_trip["rows"][0][2]["e"], true);
+    assert!(server.eof().success());
+}
+
+#[test]
+fn recalc_matches_full_reopen_across_formula_corpus_samples() {
+    struct Sample {
+        path: PathBuf,
+        precedent: (u32, u32),
+        formula: (u32, u32),
+    }
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let second_fixture = temp.path().join("second-formula-fixture.xlsx");
+    write_second_formula_fixture(&second_fixture);
+    let samples = [
+        Sample {
+            path: fixture_path(),
+            precedent: (1, 0),
+            formula: (1, 2),
+        },
+        Sample {
+            path: second_fixture,
+            precedent: (0, 0),
+            formula: (0, 2),
+        },
+    ];
+    let mut server = Server::start(&[]);
+    let mut id = 100_u64;
+
+    for (sample_index, sample) in samples.iter().enumerate() {
+        let opened = open_path(&mut server, id, &sample.path);
+        id += 1;
+        let source_handle = opened["handle"].as_str().expect("source handle").to_owned();
+        for (value_index, value) in [-3.0, 0.0, 10.25].into_iter().enumerate() {
+            server.send(json!({
+                "id":id,"op":"recalc","handle":source_handle,
+                "overrides":[{
+                    "sheet":0,"r":sample.precedent.0,"c":sample.precedent.1,"v":value
+                }]
+            }));
+            let recalculated = server.receive();
+            assert_eq!(recalculated["ok"], true, "{recalculated}");
+            let expected = recalculated["changed"]
+                .as_array()
+                .expect("changed array")
+                .iter()
+                .find(|cell| {
+                    cell["sheet"] == 0
+                        && cell["r"] == sample.formula.0
+                        && cell["c"] == sample.formula.1
+                })
+                .unwrap_or_else(|| panic!("formula missing from changed set: {recalculated}"))["v"]
+                .clone();
+            id += 1;
+
+            let out = temp
+                .path()
+                .join(format!("sample-{sample_index}-{value_index}.xlsx"));
+            server.send(json!({
+                "id":id,"op":"export","handle":source_handle,"format":"xlsx","out":out,
+                "overrides":[{
+                    "sheet":0,"r":sample.precedent.0,"c":sample.precedent.1,"v":value
+                }]
+            }));
+            let exported = server.receive();
+            assert_eq!(exported["ok"], true, "{exported}");
+            id += 1;
+
+            let reopened = open_path(&mut server, id, &out);
+            id += 1;
+            server.send(json!({
+                "id":id,"op":"window","handle":reopened["handle"],"sheet":0,
+                "r0":sample.formula.0,"c0":sample.formula.1,"nr":1,"nc":1
+            }));
+            let full = server.receive();
+            assert_eq!(full["rows"][0][0]["e"], true, "{full}");
+            assert_eq!(
+                full["rows"][0][0]["v"], expected,
+                "sample {sample_index}, override {value}"
+            );
+            id += 1;
+        }
+    }
     assert!(server.eof().success());
 }
 
@@ -353,7 +524,8 @@ fn csv_export_is_rfc_4180_and_xlsx_succeeds() {
             "merges",
             "styles",
             "column widths",
-            "row heights"
+            "row heights",
+            "formulas kept file-cached values (1 unevaluated)"
         ])
     );
 

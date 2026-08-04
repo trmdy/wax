@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use wax_harness::{run_serve_file, ServeFileConfig, ServeFileMetrics};
+use serde_json::json;
+use wax_harness::{run_serve_file, FormulaProbe, ServeFileConfig, ServeFileMetrics};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -18,7 +19,48 @@ fn run(name: &str, timeout_ms: u64, export_smoke: bool) -> ServeFileMetrics {
         file: &file,
         timeout: Duration::from_millis(timeout_ms),
         export_smoke,
+        formula_probes: &[],
     })
+}
+
+#[test]
+fn measures_formula_evaluation_and_retains_bounded_disagreement_evidence() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let probes = [
+        FormulaProbe {
+            sheet: 0,
+            r: 1,
+            c: 2,
+            formula: "SUM(A2:B2)".to_owned(),
+            cached: json!(5),
+        },
+        FormulaProbe {
+            sheet: 0,
+            r: 70,
+            c: 25,
+            formula: "A71+1".to_owned(),
+            cached: json!(8),
+        },
+    ];
+    let result = run_serve_file(ServeFileConfig {
+        wax_bin: &fixture("mock-serve.js"),
+        repo_root: root,
+        file: &root.join("formula.xlsx"),
+        timeout: Duration::from_secs(2),
+        export_smoke: false,
+        formula_probes: &probes,
+    });
+
+    assert!(result.open_ok, "{result:#?}");
+    assert_eq!(result.formula_eval.covered, 2);
+    assert_eq!(result.formula_eval.evaluated, 2);
+    assert_eq!(result.formula_eval.cache_compared, 2);
+    assert_eq!(result.formula_eval.cache_agreed, 1);
+    assert_eq!(result.formula_eval.disagreements.len(), 1);
+    let disagreement = &result.formula_eval.disagreements[0];
+    assert_eq!((disagreement.r, disagreement.c), (70, 25));
+    assert_eq!(disagreement.cached, json!(8));
+    assert_eq!(disagreement.evaluated, json!(9));
 }
 
 #[test]

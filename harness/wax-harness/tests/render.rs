@@ -23,6 +23,8 @@ fn scoreboard_markdown_matches_golden_file() {
             "displayStringMatch": {"matched": 1, "total": 2, "percent": 50.0},
             "formulaFidelity": {"matched": 1, "total": 1, "percent": 100.0},
             "cachedResultFidelity": {"matched": 0, "total": 1, "percent": 0.0},
+            "formulaCellsEvaluated": {"matched": 9, "total": 10, "percent": 90.0},
+            "evaluatedCacheAgreement": {"matched": 8, "total": 9, "percent": 88.8888888889},
             "parseTimeMs": {
                 "wax": {"p50": 10, "p95": 12},
                 "sheetjs": {"p50": 20, "p95": 22}

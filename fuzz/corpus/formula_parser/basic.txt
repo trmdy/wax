@@ -1,0 +1,1 @@
+=IF(SUM(Sheet1!$A$1:B9)>=10,CONCAT("ok",ROUND(2.675,2)),ABS(-1))

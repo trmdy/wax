@@ -22,7 +22,7 @@ Download `SHA256SUMS.txt` and the archive
 
 ```bash
 set -euo pipefail
-version=0.3.0
+version=0.4.0
 platform=macos-arm64
 archive="wax-v${version}-${platform}.tar.gz"
 base="https://github.com/trmdy/wax/releases/download/v${version}"
@@ -35,7 +35,7 @@ tar -xzf "$archive" -C "wax-v${version}"
 "wax-v${version}/wax" --version
 ```
 
-The final command prints `wax 0.3.0 (proto 0)` for the v0.3.0 release. Move
+The final command prints `wax 0.4.0 (proto 0)` for the v0.4.0 release. Move
 the binary to a directory on `PATH` if desired.
 
 To build instead, install Rust and run:
@@ -62,19 +62,21 @@ The main workbook lifecycle is:
   truncation status, and the protocol number.
 - `meta` refreshes metadata for a handle.
 - `window` returns a clipped row/column window plus intersecting merges.
+- `recalc` evaluates dirty downstream formulas against a hypothetical edit
+  layer without mutating the workbook.
 - `export` writes an XLSX or CSV copy and reports every dropped feature.
 - `close` releases a handle.
 
 Successful `version` and `open` responses advertise capabilities additively
 in `caps` (absence means no capabilities); the `--version` line never
 carries them. The current server advertises
-`caps:["exportOverrides","sheetSizeInfos","exportSizeOverrides"]`.
+`caps:["exportOverrides","sheetSizeInfos","exportSizeOverrides","formulaEval","sheetView"]`.
 
 This is a representative v0 session (one object per line):
 
 ```json
 {"id":1,"op":"open","path":"/absolute/path/book.xlsx","maxCells":5000000,"maxBytes":104857600,"timeoutMs":30000}
-{"id":1,"ok":true,"proto":0,"caps":["exportOverrides","sheetSizeInfos","exportSizeOverrides"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false,"colInfos":[{"c":1,"width":22.5}],"rowInfos":[{"r":0,"height":27.75}],"defaultRowHeight":15.0,"defaultColWidth":8.43}],"warnings":[]}
+{"id":1,"ok":true,"proto":0,"caps":["exportOverrides","sheetSizeInfos","exportSizeOverrides","formulaEval","sheetView"],"handle":"h1","truncated":false,"sheets":[{"name":"Sheet1","rows":2,"cols":2,"truncated":false,"colInfos":[{"c":1,"width":22.5}],"rowInfos":[{"r":0,"height":27.75}],"defaultRowHeight":15.0,"defaultColWidth":8.43,"frozenRows":1,"frozenCols":0}],"warnings":[]}
 {"id":2,"op":"window","handle":"h1","sheet":0,"r0":0,"c0":0,"nr":2,"nc":2}
 {"id":2,"ok":true,"sheet":0,"r0":0,"c0":0,"nr":2,"nc":2,"rows":[[{"t":"s","v":"Item","d":"Item"},{"t":"s","v":"Cost","d":"Cost"}],[{"t":"s","v":"Tea","d":"Tea"},{"t":"n","v":12.5,"d":"12.50"}]],"merges":[]}
 {"id":3,"op":"close","handle":"h1"}
@@ -119,6 +121,36 @@ collapse last-wins, layer over the source's declared sizes, clamp loudly to
 0..=255 chars / 0..=409.5 points, and share the 100,000-entry cap with cell
 overrides. csv exports drop size overrides loudly with a counted `dropped`
 entry scoped to the exported sheet.
+
+Under `formulaEval`, wax evaluates the v0.4 XLSX/XLSM formula subset at open:
+arithmetic, comparisons, `&`, scalar A1 references (including cross-sheet
+references), ranges passed to list-consuming functions, and `SUM`, `AVERAGE`,
+`COUNT`, `COUNTA`, `MIN`, `MAX`, `IF`, `AND`, `OR`, `NOT`, `ROUND`, `ABS`, and
+`CONCAT`. Evaluated window cells carry `e:true`; their computed value and
+display string replace the file cache while their formula and format code
+remain intact. Unknown functions remain file-cached and omit `e`. Legacy
+implicit-intersection formulas, array/range arithmetic, and dynamic arrays are
+outside this scalar MVP and likewise remain file-cached. Cycles return
+`#CYCLE!`, and the one-second wall-clock evaluation budget degrades loudly
+through `warnings` instead of hanging.
+
+`recalc` accepts the same override entries as export and returns only changed
+downstream evaluated cells, without mutating later windows or exports:
+
+```json
+{"id":8,"op":"recalc","handle":"h1","overrides":[{"sheet":0,"r":1,"c":0,"v":10}]}
+{"id":8,"ok":true,"changed":[{"sheet":0,"r":1,"c":2,"v":13.0,"d":null,"e":true}],"evaluated":1,"skipped":0,"truncated":false,"warnings":[]}
+```
+
+The changed set is capped at 50,000 cells with `truncated:true` and a warning
+when clipped. Export uses the same side-effect-free evaluation layer to write
+fresh caches for covered downstream formulas; uncovered formulas are reported
+in `dropped` and retain their file cache.
+
+Under `sheetView`, every `open`/`meta` sheet entry carries `frozenRows` and
+`frozenCols` as zero-based counts (`0` means no frozen pane). XLSX pane records
+are guaranteed; XLS and XLSB frozen-pane records are read best-effort. Ordinary
+split panes are not misreported as frozen panes.
 
 Send `{"id":9,"op":"cancel","target":2}` to request cooperative cancellation
 of in-flight request 2. Errors always use

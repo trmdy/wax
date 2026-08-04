@@ -13,6 +13,8 @@ Corpus: 3 attempted, 1 skipped.
 | display-string match % | 50.00% (1/2) | reference |
 | formula fidelity % | 100.00% (1/1) | reference |
 | cached-result fidelity % | 0.00% (0/1) | reference |
+| formula cells evaluated % (covered set) | 90.00% (9/10) | n/a |
+| evaluated-vs-file-cached agreement % | 88.89% (8/9) | n/a |
 | p50 parse time | 10 ms | 20 ms |
 | p95 parse time | 12 ms | 22 ms |
 | peak RSS (p50 / max) | 100 B / 120 B | 200 B / 220 B |
