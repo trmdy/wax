@@ -94,8 +94,6 @@ impl EvalError {
 pub struct FormulaWorkbook {
     nodes: Vec<FormulaNode>,
     node_by_cell: HashMap<CellRef, usize>,
-    dependencies: Vec<Vec<usize>>,
-    reverse: Vec<Vec<usize>>,
     topo: Vec<usize>,
     cycle_or_downstream: HashSet<usize>,
     base_results: HashMap<CellRef, EvaluatedCell>,
@@ -110,6 +108,7 @@ struct FormulaNode {
     deps: Vec<Dependency>,
     fmt: Option<String>,
     cached_type: CellType,
+    authored: bool,
 }
 
 type FormulaColumns = Vec<(u32, usize)>;
@@ -136,8 +135,6 @@ impl FormulaWorkbook {
             Self {
                 nodes: Vec::new(),
                 node_by_cell: HashMap::new(),
-                dependencies: Vec::new(),
-                reverse: Vec::new(),
                 topo: Vec::new(),
                 cycle_or_downstream: HashSet::new(),
                 base_results: HashMap::new(),
@@ -184,6 +181,7 @@ impl FormulaWorkbook {
                         deps,
                         fmt: cell.fmt,
                         cached_type: cell.t,
+                        authored: false,
                     });
                 }
             });
@@ -230,8 +228,6 @@ impl FormulaWorkbook {
         let mut workbook = Self {
             nodes,
             node_by_cell,
-            dependencies,
-            reverse,
             topo,
             cycle_or_downstream,
             base_results: HashMap::new(),
@@ -303,37 +299,118 @@ impl FormulaWorkbook {
         budget: Duration,
     ) -> Result<RecalcOutcome, EvalError> {
         let overrides = collapse_overrides(store, overrides)?;
-        let override_rows = override_row_index(overrides.keys().copied());
+        let touched = overrides.keys().copied().collect::<HashSet<_>>();
+        let override_rows = override_row_index(touched.iter().copied());
+        let literal_overrides = overrides
+            .iter()
+            .filter(|(_, entry)| entry.f.is_none())
+            .map(|(cell, entry)| {
+                (
+                    *cell,
+                    entry.v.as_ref().map_or(Scalar::Blank, Scalar::from_value),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        // Recalc is an immutable request-local layer. Retain every covered
+        // file formula that was not overridden, then add authored formulas
+        // at their target coordinates. Rebuilding these graph indexes is
+        // what lets a new formula participate in dependencies in both
+        // directions without mutating the handle's store or base engine.
+        let mut nodes = self
+            .nodes
+            .iter()
+            .filter(|node| !touched.contains(&node.cell))
+            .cloned()
+            .collect::<Vec<_>>();
+        let sheet_names = (0..store.sheet_count())
+            .filter_map(|sheet| {
+                store
+                    .sheet_meta(sheet)
+                    .map(|meta| (meta.name.to_ascii_lowercase(), sheet))
+            })
+            .collect::<HashMap<_, _>>();
+        let mut authored = overrides
+            .iter()
+            .filter_map(|(cell, entry)| entry.f.as_deref().map(|formula| (*cell, formula)))
+            .collect::<Vec<_>>();
+        authored.sort_by_key(|(cell, _)| *cell);
+        for (cell, formula) in authored {
+            let (ast, deps) = match parse_formula(formula, cell.sheet, &sheet_names) {
+                Ok(ast) => {
+                    let mut deps = Vec::new();
+                    ast.dependencies(&mut deps);
+                    (ast, deps)
+                }
+                Err(ParseError::Unsupported) => (Expr::Error("#NAME?".to_owned()), Vec::new()),
+                Err(ParseError::Invalid | ParseError::TooLarge) => {
+                    (Expr::Error("#VALUE!".to_owned()), Vec::new())
+                }
+            };
+            let stored = store.cell(cell.sheet, cell.r, cell.c);
+            nodes.push(FormulaNode {
+                cell,
+                ast,
+                deps,
+                fmt: stored.as_ref().and_then(|cell| cell.fmt.clone()),
+                cached_type: stored.as_ref().map_or(CellType::N, |cell| cell.t),
+                authored: true,
+            });
+        }
+
+        let node_by_cell = nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (node.cell, index))
+            .collect::<HashMap<_, _>>();
+        let formula_rows = formula_row_index(&nodes);
+        let mut dependencies = vec![Vec::new(); nodes.len()];
+        let mut reverse = vec![Vec::new(); nodes.len()];
+        for (index, node) in nodes.iter().enumerate() {
+            let mut formula_dependencies = HashSet::new();
+            for dependency in &node.deps {
+                match dependency {
+                    Dependency::Cell(cell) => {
+                        if let Some(&other) = node_by_cell.get(cell) {
+                            formula_dependencies.insert(other);
+                        }
+                    }
+                    Dependency::Range(range) => collect_formula_nodes_in_range(
+                        &formula_rows,
+                        *range,
+                        &mut formula_dependencies,
+                    ),
+                }
+            }
+            dependencies[index].extend(formula_dependencies);
+            dependencies[index].sort_unstable();
+            for &dependency in &dependencies[index] {
+                reverse[dependency].push(index);
+            }
+        }
+        for dependents in &mut reverse {
+            dependents.sort_unstable();
+            dependents.dedup();
+        }
+        let (topo, cycle_or_downstream) = topological_order(&dependencies, &reverse);
+
         let mut dirty = HashSet::new();
-        for (index, node) in self.nodes.iter().enumerate() {
-            if node
-                .deps
-                .iter()
-                .any(|dependency| dependency_touched(*dependency, &overrides, &override_rows))
+        for (index, node) in nodes.iter().enumerate() {
+            if node.authored
+                || node
+                    .deps
+                    .iter()
+                    .any(|dependency| dependency_touched(*dependency, &touched, &override_rows))
             {
                 dirty.insert(index);
             }
         }
         let mut queue = dirty.iter().copied().collect::<VecDeque<_>>();
-        for cell in overrides.keys() {
-            if let Some(&node) = self.node_by_cell.get(cell) {
-                for &dependent in &self.reverse[node] {
-                    if dirty.insert(dependent) {
-                        queue.push_back(dependent);
-                    }
-                }
-            }
-        }
         while let Some(node) = queue.pop_front() {
-            for &dependent in &self.reverse[node] {
+            for &dependent in &reverse[node] {
                 if dirty.insert(dependent) {
                     queue.push_back(dependent);
                 }
-            }
-        }
-        for cell in overrides.keys() {
-            if let Some(&node) = self.node_by_cell.get(cell) {
-                dirty.remove(&node);
             }
         }
 
@@ -345,17 +422,7 @@ impl FormulaWorkbook {
         }
         let mut evaluated = 0_u64;
         let mut budget_exceeded = false;
-        let overridden_nodes = overrides
-            .keys()
-            .filter_map(|cell| self.node_by_cell.get(cell).copied())
-            .collect::<HashSet<_>>();
-        let (dynamic_topo, dynamic_cycles) =
-            topological_order_without(&self.dependencies, &self.reverse, &overridden_nodes);
-
-        // Removing overridden formula nodes from the already-built graph can
-        // break a cycle. Re-running Kahn over those retained edges is cheap
-        // and does not rebuild or reparse the dependency graph.
-        for &index in &dynamic_topo {
+        for &index in &topo {
             if !dirty.contains(&index) {
                 continue;
             }
@@ -363,12 +430,12 @@ impl FormulaWorkbook {
                 budget_exceeded = true;
                 break;
             }
-            let node = &self.nodes[index];
+            let node = &nodes[index];
             let mut context = EvalContext {
                 store,
-                nodes: &self.node_by_cell,
+                nodes: &node_by_cell,
                 results: &results,
-                overrides: &overrides,
+                overrides: &literal_overrides,
                 deadline,
             };
             match context.eval(&node.ast) {
@@ -385,15 +452,15 @@ impl FormulaWorkbook {
 
         // Residual graph nodes are cycle members or downstream of a cycle.
         // If an override did not break the relevant chain, they remain loud.
-        for &index in &dynamic_cycles {
-            if !dirty.contains(&index) || overrides.contains_key(&self.nodes[index].cell) {
+        for &index in &cycle_or_downstream {
+            if !dirty.contains(&index) {
                 continue;
             }
             if Instant::now() >= deadline {
                 budget_exceeded = true;
                 break;
             }
-            let node = &self.nodes[index];
+            let node = &nodes[index];
             results.insert(node.cell, error_cell(node.cell, "#CYCLE!"));
             evaluated = evaluated.saturating_add(1);
         }
@@ -412,11 +479,18 @@ impl FormulaWorkbook {
         let mut changed = dirty
             .iter()
             .filter_map(|&index| {
-                let cell = self.nodes[index].cell;
+                let node = &nodes[index];
+                let cell = node.cell;
                 let next = results.get(&cell)?;
-                (self.base_results.get(&cell) != Some(next)).then(|| next.clone())
+                (node.authored || self.base_results.get(&cell) != Some(next)).then(|| next.clone())
             })
             .collect::<Vec<_>>();
+        changed.extend(
+            overrides
+                .iter()
+                .filter(|(_, entry)| entry.f.is_none())
+                .map(|(cell, entry)| literal_override_cell(store, *cell, entry.v.as_ref())),
+        );
         changed.sort_by_key(|cell| (cell.sheet, cell.r, cell.c));
         let truncated = bound_changed_set(&mut changed, &mut warnings);
         // Export needs only formulas dirtied by this override layer. Keeping
@@ -425,7 +499,7 @@ impl FormulaWorkbook {
         // cache, even if its value happens not to have changed.
         let mut all_evaluated = dirty
             .iter()
-            .filter_map(|&index| results.get(&self.nodes[index].cell).cloned())
+            .filter_map(|&index| results.get(&nodes[index].cell).cloned())
             .collect::<Vec<_>>();
         all_evaluated.sort_by_key(|cell| (cell.sheet, cell.r, cell.c));
         Ok(RecalcOutcome {
@@ -566,51 +640,6 @@ fn topological_order(
     (order, residual)
 }
 
-fn topological_order_without(
-    dependencies: &[Vec<usize>],
-    reverse: &[Vec<usize>],
-    excluded: &HashSet<usize>,
-) -> (Vec<usize>, HashSet<usize>) {
-    let mut indegree = dependencies
-        .iter()
-        .enumerate()
-        .map(|(index, values)| {
-            if excluded.contains(&index) {
-                0
-            } else {
-                values
-                    .iter()
-                    .filter(|dependency| !excluded.contains(dependency))
-                    .count()
-            }
-        })
-        .collect::<Vec<_>>();
-    let mut queue = indegree
-        .iter()
-        .enumerate()
-        .filter_map(|(index, count)| (!excluded.contains(&index) && *count == 0).then_some(index))
-        .collect::<VecDeque<_>>();
-    let mut order = Vec::with_capacity(dependencies.len().saturating_sub(excluded.len()));
-    while let Some(node) = queue.pop_front() {
-        order.push(node);
-        for &dependent in &reverse[node] {
-            if excluded.contains(&dependent) {
-                continue;
-            }
-            indegree[dependent] = indegree[dependent].saturating_sub(1);
-            if indegree[dependent] == 0 {
-                queue.push_back(dependent);
-            }
-        }
-    }
-    let residual = indegree
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, count)| (!excluded.contains(&index) && count > 0).then_some(index))
-        .collect();
-    (order, residual)
-}
-
 fn override_row_index(
     cells: impl Iterator<Item = CellRef>,
 ) -> HashMap<u32, BTreeMap<u32, Vec<u32>>> {
@@ -634,11 +663,11 @@ fn override_row_index(
 
 fn dependency_touched(
     dependency: Dependency,
-    overrides: &HashMap<CellRef, Scalar>,
+    overrides: &HashSet<CellRef>,
     rows: &HashMap<u32, BTreeMap<u32, Vec<u32>>>,
 ) -> bool {
     match dependency {
-        Dependency::Cell(cell) => overrides.contains_key(&cell),
+        Dependency::Cell(cell) => overrides.contains(&cell),
         Dependency::Range(range) => rows.get(&range.sheet).is_some_and(|sheet_rows| {
             sheet_rows.range(range.r0..=range.r1).any(|(_, columns)| {
                 let first = columns.partition_point(|column| *column < range.c0);
@@ -651,7 +680,7 @@ fn dependency_touched(
 fn collapse_overrides(
     store: &WorkbookStore,
     overrides: &[CellOverride],
-) -> Result<HashMap<CellRef, Scalar>, EvalError> {
+) -> Result<HashMap<CellRef, CellOverride>, EvalError> {
     if overrides.len() > EXPORT_OVERRIDES_CAP {
         return Err(EvalError::bad_request(format!(
             "overrides length {} exceeds the {EXPORT_OVERRIDES_CAP}-entry cap",
@@ -683,7 +712,7 @@ fn collapse_overrides(
                 r: entry.r,
                 c: entry.c,
             },
-            entry.v.as_ref().map_or(Scalar::Blank, Scalar::from_value),
+            entry.clone(),
         );
     }
     for (sheet, (rows, cols)) in extents {
@@ -863,13 +892,61 @@ fn div_zero_error() -> Scalar {
     Scalar::Error("#DIV/0!".to_owned())
 }
 
+fn literal_override_cell(
+    store: &WorkbookStore,
+    cell: CellRef,
+    value: Option<&CellValue>,
+) -> EvaluatedCell {
+    let fmt = store
+        .cell(cell.sheet, cell.r, cell.c)
+        .and_then(|stored| stored.fmt);
+    let (t, d) = match value {
+        None => (CellType::S, None),
+        Some(CellValue::Number(number)) => (
+            CellType::N,
+            fmt.as_deref().and_then(|code| {
+                wax_fmt::render(code, FmtValue::Number(*number), store.date_1904())
+            }),
+        ),
+        Some(CellValue::Text(text)) => (
+            CellType::S,
+            fmt.as_deref()
+                .and_then(|code| wax_fmt::render(code, FmtValue::Text(text), store.date_1904())),
+        ),
+        Some(CellValue::Bool(boolean)) => (
+            CellType::B,
+            fmt.as_deref().and_then(|code| {
+                wax_fmt::render(code, FmtValue::Bool(*boolean), store.date_1904())
+            }),
+        ),
+    };
+    EvaluatedCell {
+        sheet: cell.sheet,
+        r: cell.r,
+        c: cell.c,
+        t,
+        v: value.cloned(),
+        d,
+        e: false,
+    }
+}
+
+fn formula_display(
+    node: &FormulaNode,
+    value: FmtValue<'_>,
+    date_1904: bool,
+    general: impl FnOnce() -> String,
+) -> Option<String> {
+    match node.fmt.as_deref() {
+        Some(code) => wax_fmt::render(code, value, date_1904),
+        None => node.authored.then(general),
+    }
+}
+
 fn evaluated_cell(node: &FormulaNode, value: Scalar, date_1904: bool) -> EvaluatedCell {
     let (t, v, d) = match value {
         Scalar::Blank => {
-            let d = node
-                .fmt
-                .as_deref()
-                .and_then(|code| wax_fmt::render(code, FmtValue::Number(0.0), date_1904));
+            let d = formula_display(node, FmtValue::Number(0.0), date_1904, || "0".to_owned());
             if node.cached_type == CellType::D {
                 (
                     CellType::D,
@@ -881,10 +958,9 @@ fn evaluated_cell(node: &FormulaNode, value: Scalar, date_1904: bool) -> Evaluat
             }
         }
         Scalar::Number(number) => {
-            let d = node
-                .fmt
-                .as_deref()
-                .and_then(|code| wax_fmt::render(code, FmtValue::Number(number), date_1904));
+            let d = formula_display(node, FmtValue::Number(number), date_1904, || {
+                general_number(number)
+            });
             if node.cached_type == CellType::D && number >= 0.0 {
                 (
                     CellType::D,
@@ -896,17 +972,13 @@ fn evaluated_cell(node: &FormulaNode, value: Scalar, date_1904: bool) -> Evaluat
             }
         }
         Scalar::Text(text) => {
-            let d = node
-                .fmt
-                .as_deref()
-                .and_then(|code| wax_fmt::render(code, FmtValue::Text(&text), date_1904));
+            let d = formula_display(node, FmtValue::Text(&text), date_1904, || text.clone());
             (CellType::S, Some(CellValue::Text(text)), d)
         }
         Scalar::Bool(boolean) => {
-            let d = node
-                .fmt
-                .as_deref()
-                .and_then(|code| wax_fmt::render(code, FmtValue::Bool(boolean), date_1904));
+            let d = formula_display(node, FmtValue::Bool(boolean), date_1904, || {
+                if boolean { "TRUE" } else { "FALSE" }.to_owned()
+            });
             (CellType::B, Some(CellValue::Bool(boolean)), d)
         }
         Scalar::Error(error) => (
@@ -974,6 +1046,7 @@ enum Expr {
     Number(f64),
     Text(String),
     Bool(bool),
+    Error(String),
     Ref(CellRef),
     Range(RangeRef),
     Unary(UnaryOp, Box<Self>),
@@ -996,7 +1069,7 @@ impl Expr {
                     argument.dependencies(output);
                 }
             }
-            Self::Blank | Self::Number(_) | Self::Text(_) | Self::Bool(_) => {}
+            Self::Blank | Self::Number(_) | Self::Text(_) | Self::Bool(_) | Self::Error(_) => {}
         }
     }
 
@@ -1005,7 +1078,12 @@ impl Expr {
     /// arithmetic are outside the curated scalar surface and remain cached.
     fn scalar_surface(&self) -> bool {
         match self {
-            Self::Blank | Self::Number(_) | Self::Text(_) | Self::Bool(_) | Self::Ref(_) => true,
+            Self::Blank
+            | Self::Number(_)
+            | Self::Text(_)
+            | Self::Bool(_)
+            | Self::Error(_)
+            | Self::Ref(_) => true,
             Self::Range(_) => false,
             Self::Unary(_, expression) => expression.scalar_surface(),
             Self::Binary(_, left, right) => left.scalar_surface() && right.scalar_surface(),
@@ -1647,6 +1725,7 @@ impl EvalContext<'_> {
             Expr::Number(number) => Scalar::Number(*number),
             Expr::Text(text) => Scalar::Text(text.clone()),
             Expr::Bool(boolean) => Scalar::Bool(*boolean),
+            Expr::Error(error) => Scalar::Error(error.clone()),
             Expr::Ref(reference) => self.cell(*reference),
             Expr::Range(_) => value_error(),
             Expr::Unary(operator, expression) => {
@@ -2454,14 +2533,18 @@ mod tests {
                     r: 0,
                     c: 0,
                     v: Some(CellValue::Number(10.0)),
+                    f: None,
                 }],
                 Duration::from_secs(1),
             )
             .expect("an override should break the cycle");
         assert_eq!(outcome.evaluated, 1);
-        assert_eq!(outcome.changed.len(), 1);
-        assert_eq!(outcome.changed[0].c, 1);
-        assert_eq!(outcome.changed[0].v, Some(CellValue::Number(11.0)));
+        assert_eq!(outcome.changed.len(), 2);
+        assert_eq!(outcome.changed[0].c, 0);
+        assert_eq!(outcome.changed[0].v, Some(CellValue::Number(10.0)));
+        assert!(!outcome.changed[0].e);
+        assert_eq!(outcome.changed[1].c, 1);
+        assert_eq!(outcome.changed[1].v, Some(CellValue::Number(11.0)));
         assert_eq!(
             engine
                 .evaluated_cell(CellRef {
@@ -2526,9 +2609,11 @@ mod tests {
 
     #[test]
     fn recalc_is_last_wins_incremental_and_side_effect_free() {
+        let mut formatted_formula = cell(0, 1, Some(CellValue::Number(4.0)), Some("A1*2"));
+        formatted_formula.fmt = Some("0.00".to_owned());
         let store = workbook(vec![
             cell(0, 0, Some(CellValue::Number(2.0)), None),
-            cell(0, 1, Some(CellValue::Number(4.0)), Some("A1*2")),
+            formatted_formula,
             cell(0, 2, Some(CellValue::Number(5.0)), Some("B1+1")),
             cell(0, 3, Some(CellValue::Number(99.0)), Some("SUM(A5:A6)")),
         ]);
@@ -2542,21 +2627,27 @@ mod tests {
                         r: 0,
                         c: 0,
                         v: Some(CellValue::Number(3.0)),
+                        f: None,
                     },
                     CellOverride {
                         sheet: 0,
                         r: 0,
                         c: 0,
                         v: Some(CellValue::Number(4.0)),
+                        f: None,
                     },
                 ],
                 Duration::from_secs(1),
             )
             .expect("recalc should succeed");
         assert_eq!(outcome.evaluated, 2);
-        assert_eq!(outcome.changed.len(), 2);
-        assert_eq!(outcome.changed[0].v, Some(CellValue::Number(8.0)));
-        assert_eq!(outcome.changed[1].v, Some(CellValue::Number(9.0)));
+        assert_eq!(outcome.changed.len(), 3);
+        assert_eq!(outcome.changed[0].v, Some(CellValue::Number(4.0)));
+        assert!(!outcome.changed[0].e);
+        assert_eq!(outcome.changed[1].v, Some(CellValue::Number(8.0)));
+        assert_eq!(outcome.changed[1].d.as_deref(), Some("8.00"));
+        assert!(outcome.changed[1].e);
+        assert_eq!(outcome.changed[2].v, Some(CellValue::Number(9.0)));
         assert_eq!(
             engine
                 .evaluated_cell(CellRef {
@@ -2566,6 +2657,115 @@ mod tests {
                 })
                 .and_then(|cell| cell.v.clone()),
             Some(CellValue::Number(4.0))
+        );
+    }
+
+    #[test]
+    fn authored_formulas_join_the_graph_render_general_and_report_errors() {
+        let mut formatted = cell(0, 0, Some(CellValue::Number(2.0)), None);
+        formatted.fmt = Some("0.00".to_owned());
+        let mut formatted_dependent = cell(0, 2, Some(CellValue::Number(0.0)), Some("B1*2"));
+        formatted_dependent.fmt = Some("0.00".to_owned());
+        let store = workbook(vec![formatted, formatted_dependent]);
+        let (engine, _) = FormulaWorkbook::open(&store, Duration::from_secs(1));
+        let outcome = engine
+            .recalculate(
+                &store,
+                &[
+                    CellOverride {
+                        sheet: 0,
+                        r: 0,
+                        c: 0,
+                        v: Some(CellValue::Number(4.0)),
+                        f: None,
+                    },
+                    CellOverride {
+                        sheet: 0,
+                        r: 0,
+                        c: 1,
+                        v: Some(CellValue::Number(999.0)),
+                        f: Some("=A1+1".to_owned()),
+                    },
+                ],
+                Duration::from_secs(1),
+            )
+            .expect("authored formula recalc should succeed");
+        assert_eq!(outcome.evaluated, 2);
+        assert_eq!(outcome.changed.len(), 3);
+        assert_eq!(outcome.changed[0].d.as_deref(), Some("4.00"));
+        assert!(!outcome.changed[0].e);
+        assert_eq!(outcome.changed[1].v, Some(CellValue::Number(5.0)));
+        assert_eq!(outcome.changed[1].d.as_deref(), Some("5"));
+        assert!(outcome.changed[1].e);
+        assert_eq!(outcome.changed[2].v, Some(CellValue::Number(10.0)));
+        assert_eq!(outcome.changed[2].d.as_deref(), Some("10.00"));
+
+        let errors = engine
+            .recalculate(
+                &store,
+                &[
+                    CellOverride {
+                        sheet: 0,
+                        r: 0,
+                        c: 3,
+                        v: None,
+                        f: Some("=NOPE(A1)".to_owned()),
+                    },
+                    CellOverride {
+                        sheet: 0,
+                        r: 0,
+                        c: 4,
+                        v: None,
+                        f: Some("=1+".to_owned()),
+                    },
+                    CellOverride {
+                        sheet: 0,
+                        r: 0,
+                        c: 5,
+                        v: None,
+                        f: Some("=G1+1".to_owned()),
+                    },
+                    CellOverride {
+                        sheet: 0,
+                        r: 0,
+                        c: 6,
+                        v: None,
+                        f: Some("=F1+1".to_owned()),
+                    },
+                ],
+                Duration::from_secs(1),
+            )
+            .expect("engine errors belong to cells, not the request");
+        let values = errors
+            .changed
+            .iter()
+            .filter(|cell| cell.c >= 3)
+            .map(|cell| (cell.c, cell.v.clone(), cell.d.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            vec![
+                (
+                    3,
+                    Some(CellValue::Text("#NAME?".to_owned())),
+                    Some("#NAME?".to_owned())
+                ),
+                (
+                    4,
+                    Some(CellValue::Text("#VALUE!".to_owned())),
+                    Some("#VALUE!".to_owned())
+                ),
+                (
+                    5,
+                    Some(CellValue::Text("#CYCLE!".to_owned())),
+                    Some("#CYCLE!".to_owned())
+                ),
+                (
+                    6,
+                    Some(CellValue::Text("#CYCLE!".to_owned())),
+                    Some("#CYCLE!".to_owned())
+                ),
+            ]
         );
     }
 

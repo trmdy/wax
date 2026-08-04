@@ -5,7 +5,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use rust_xlsxwriter::{Formula, Workbook};
+use rust_xlsxwriter::{Format, Formula, Workbook};
 use serde_json::{json, Value};
 
 struct Server {
@@ -126,6 +126,24 @@ fn write_second_formula_fixture(path: &Path) {
     workbook.save(path).expect("formula fixture should save");
 }
 
+fn write_authored_formula_fixture(path: &Path) {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    let two_decimals = Format::new().set_num_format("0.00");
+    worksheet
+        .write_number_with_format(0, 0, 1.0, &two_decimals)
+        .expect("formatted precedent should write");
+    worksheet
+        .write_number(1, 0, 2.0)
+        .expect("range precedent should write");
+    worksheet
+        .write_formula_with_format(0, 2, Formula::new("B1*2").set_result("0"), &two_decimals)
+        .expect("dependent formula should write");
+    workbook
+        .save(path)
+        .expect("authored formula fixture should save");
+}
+
 #[test]
 fn open_and_meta_carry_declared_sizes_and_resolved_defaults() {
     let fixture = fixture_path().with_file_name("sizes.xlsx");
@@ -216,7 +234,7 @@ fn version_handshake_and_eof_exit_zero() {
             "ok": true,
             "proto": 0,
             "version": env!("CARGO_PKG_VERSION"),
-            "caps": ["exportOverrides", "sheetSizeInfos", "exportSizeOverrides", "formulaEval", "sheetView"],
+            "caps": ["exportOverrides", "sheetSizeInfos", "exportSizeOverrides", "formulaEval", "sheetView", "authoredFormulas"],
         })
     );
     assert!(server.eof().success());
@@ -234,7 +252,8 @@ fn open_meta_window_close_happy_path() {
             "sheetSizeInfos",
             "exportSizeOverrides",
             "formulaEval",
-            "sheetView"
+            "sheetView",
+            "authoredFormulas"
         ])
     );
     assert_eq!(opened["handle"], "h1");
@@ -325,7 +344,10 @@ fn recalc_is_incremental_side_effect_free_and_export_round_trips_it() {
         recalculated,
         json!({
             "id":61,"ok":true,
-            "changed":[{"sheet":0,"r":1,"c":2,"v":13.0,"d":null,"e":true}],
+            "changed":[
+                {"sheet":0,"r":1,"c":0,"v":10.0,"d":null,"e":false},
+                {"sheet":0,"r":1,"c":2,"v":13.0,"d":null,"e":true}
+            ],
             "evaluated":2,"skipped":0,"truncated":false,"warnings":[]
         })
     );
@@ -358,6 +380,138 @@ fn recalc_is_incremental_side_effect_free_and_export_round_trips_it() {
     assert_eq!(round_trip["rows"][0][0]["v"], 10.0);
     assert_eq!(round_trip["rows"][0][2]["f"], "SUM(A2:B2)");
     assert_eq!(round_trip["rows"][0][2]["v"], 13.0);
+    assert_eq!(round_trip["rows"][0][2]["e"], true);
+    assert!(server.eof().success());
+}
+
+#[test]
+fn authored_formulas_recalc_both_directions_report_errors_and_round_trip() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let fixture = temp.path().join("authoring-source.xlsx");
+    let out = temp.path().join("authored-export.xlsx");
+    let errors_out = temp.path().join("authored-errors.xlsx");
+    let literal_out = temp.path().join("literal-equals-export.xlsx");
+    write_authored_formula_fixture(&fixture);
+    let mut server = Server::start(&[]);
+    let opened = open_path(&mut server, 70, &fixture);
+
+    let authoring = json!([
+        {"sheet":0,"r":0,"c":0,"v":4},
+        {"sheet":0,"r":0,"c":1,"f":"=SUM(A1:A2)","v":999}
+    ]);
+    server.send(json!({
+        "id":71,"op":"recalc","handle":opened["handle"],
+        "overrides":authoring
+    }));
+    let recalculated = server.receive();
+    assert_eq!(
+        recalculated,
+        json!({
+            "id":71,"ok":true,
+            "changed":[
+                {"sheet":0,"r":0,"c":0,"v":4.0,"d":"4.00","e":false},
+                {"sheet":0,"r":0,"c":1,"v":6.0,"d":"6","e":true},
+                {"sheet":0,"r":0,"c":2,"v":12.0,"d":"12.00","e":true}
+            ],
+            "evaluated":2,"skipped":0,"truncated":false,"warnings":[]
+        })
+    );
+
+    let error_formulas = json!([
+        {"sheet":0,"r":0,"c":3,"f":"=NOPE(A1)"},
+        {"sheet":0,"r":0,"c":4,"f":"=1+"},
+        {"sheet":0,"r":0,"c":5,"f":"=G1+1"},
+        {"sheet":0,"r":0,"c":6,"f":"=F1+1"}
+    ]);
+    server.send(json!({
+        "id":72,"op":"recalc","handle":opened["handle"],
+        "overrides":error_formulas
+    }));
+    let errors = server.receive();
+    assert_eq!(errors["ok"], true, "{errors}");
+    assert_eq!(errors["changed"][0]["v"], "#NAME?");
+    assert_eq!(errors["changed"][0]["d"], "#NAME?");
+    assert_eq!(errors["changed"][1]["v"], "#VALUE!");
+    assert_eq!(errors["changed"][1]["d"], "#VALUE!");
+    assert_eq!(errors["changed"][2]["v"], "#CYCLE!");
+    assert_eq!(errors["changed"][3]["v"], "#CYCLE!");
+
+    server.send(json!({
+        "id":77,"op":"export","handle":opened["handle"],
+        "format":"xlsx","out":errors_out,"overrides":error_formulas
+    }));
+    let error_export = server.receive();
+    assert_eq!(error_export["ok"], true, "{error_export}");
+    let reopened_errors = open_path(&mut server, 78, &errors_out);
+    server.send(json!({
+        "id":79,"op":"window","handle":reopened_errors["handle"],"sheet":0,
+        "r0":0,"c0":3,"nr":1,"nc":4
+    }));
+    let error_round_trip = server.receive();
+    assert_eq!(error_round_trip["rows"][0][0]["f"], "NOPE(A1)");
+    assert_eq!(error_round_trip["rows"][0][0]["v"], "#NAME?");
+    assert_eq!(error_round_trip["rows"][0][1]["f"], "1+");
+    assert_eq!(error_round_trip["rows"][0][1]["v"], "#VALUE!");
+    assert_eq!(error_round_trip["rows"][0][2]["v"], "#CYCLE!");
+    assert_eq!(error_round_trip["rows"][0][3]["v"], "#CYCLE!");
+
+    // `f` is the only discriminator: a leading equals in `v` stays text.
+    server.send(json!({
+        "id":73,"op":"recalc","handle":opened["handle"],
+        "overrides":[{"sheet":0,"r":0,"c":1,"v":"=SUM(A1:A2)"}]
+    }));
+    let literal = server.receive();
+    assert_eq!(literal["ok"], true, "{literal}");
+    assert_eq!(literal["changed"][0]["c"], 1);
+    assert_eq!(literal["changed"][0]["v"], "=SUM(A1:A2)");
+    assert_eq!(literal["changed"][0]["e"], false);
+
+    server.send(json!({
+        "id":80,"op":"export","handle":opened["handle"],
+        "format":"xlsx","out":literal_out,
+        "overrides":[{"sheet":0,"r":0,"c":1,"v":"=SUM(A1:A2)"}]
+    }));
+    let literal_export = server.receive();
+    assert_eq!(literal_export["ok"], true, "{literal_export}");
+    let reopened_literal = open_path(&mut server, 81, &literal_out);
+    server.send(json!({
+        "id":82,"op":"window","handle":reopened_literal["handle"],"sheet":0,
+        "r0":0,"c0":1,"nr":1,"nc":1
+    }));
+    let literal_round_trip = server.receive();
+    assert_eq!(literal_round_trip["rows"][0][0]["v"], "=SUM(A1:A2)");
+    assert!(literal_round_trip["rows"][0][0].get("f").is_none());
+
+    server.send(json!({
+        "id":74,"op":"export","handle":opened["handle"],
+        "format":"xlsx","out":out,"overrides":authoring
+    }));
+    let exported = server.receive();
+    assert_eq!(exported["ok"], true, "{exported}");
+    assert_eq!(exported["applied"], 2);
+    assert!(exported["dropped"]
+        .as_array()
+        .expect("dropped array")
+        .iter()
+        .all(|entry| !entry
+            .as_str()
+            .unwrap_or_default()
+            .contains("replaced by edited")));
+
+    let reopened = open_path(&mut server, 75, &out);
+    server.send(json!({
+        "id":76,"op":"window","handle":reopened["handle"],"sheet":0,
+        "r0":0,"c0":0,"nr":2,"nc":3
+    }));
+    let round_trip = server.receive();
+    assert_eq!(round_trip["rows"][0][0]["v"], 4.0);
+    assert_eq!(round_trip["rows"][0][0]["d"], "4.00");
+    assert_eq!(round_trip["rows"][0][1]["f"], "SUM(A1:A2)");
+    assert_eq!(round_trip["rows"][0][1]["v"], 6.0);
+    assert_eq!(round_trip["rows"][0][1]["e"], true);
+    assert!(round_trip["rows"][0][1].get("d").is_none());
+    assert_eq!(round_trip["rows"][0][2]["f"], "B1*2");
+    assert_eq!(round_trip["rows"][0][2]["v"], 12.0);
     assert_eq!(round_trip["rows"][0][2]["e"], true);
     assert!(server.eof().success());
 }

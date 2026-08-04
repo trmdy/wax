@@ -105,9 +105,15 @@ impl std::error::Error for WriteError {}
 /// recomputing sheet dims as `max(store dims, override max + 1)`.
 #[derive(Debug, Default)]
 struct SheetOverrides {
-    cells: HashMap<(u32, u32), Option<CellValue>>,
+    cells: HashMap<(u32, u32), OverrideValue>,
     max_row: u32,
     max_col: u32,
+}
+
+#[derive(Clone, Debug)]
+struct OverrideValue {
+    v: Option<CellValue>,
+    f: Option<String>,
 }
 
 /// Validate and collapse export overrides (v0.2 contract). `scope` limits
@@ -155,7 +161,13 @@ fn collapse_overrides(
         let sheet = collapsed.entry(entry.sheet).or_default();
         sheet.max_row = sheet.max_row.max(entry.r);
         sheet.max_col = sheet.max_col.max(entry.c);
-        sheet.cells.insert((entry.r, entry.c), entry.v.clone());
+        sheet.cells.insert(
+            (entry.r, entry.c),
+            OverrideValue {
+                v: entry.v.clone(),
+                f: entry.f.clone(),
+            },
+        );
     }
     for (sheet_index, sheet) in &collapsed {
         let meta = store.sheet_meta(*sheet_index).ok_or_else(|| {
@@ -182,43 +194,75 @@ fn collapse_overrides(
     Ok(collapsed)
 }
 
-/// Build the cell an override produces (amendments A1–A3): the value is
-/// replaced, the display string is recomputed by re-rendering the retained
-/// format code through wax-fmt (`None` when nothing is retained, so CSV
-/// falls back to raw), the style id and format code of an overridden cell
-/// are kept, a formula is always dropped, strings are never reinterpreted
-/// as formulas, and numbers are never coerced to dates. A synthesized cell
-/// (`stored: None`) retains nothing and lands on the XF-0 base style.
+/// Build the cell an override produces. Literal entries keep the frozen
+/// v0.2 A1–A3 rules; formula entries retain style/format, install their
+/// authored source, and take their cache exclusively from the evaluator
+/// when it produced one (the caller's `v` is advisory only).
 ///
 /// Display recompute uses the 1900 epoch: the exported workbook is always
 /// 1900-based (date cells travel as ISO text through `ExcelDateTime`), so
 /// this matches what wax's own reader shows on read-back of the export.
-fn overridden_cell(stored: Option<&WindowCell>, value: Option<&CellValue>) -> WindowCell {
+fn overridden_cell(
+    stored: Option<&WindowCell>,
+    value: &OverrideValue,
+    evaluated: Option<&EvaluatedCell>,
+) -> WindowCell {
     let fmt = stored.and_then(|cell| cell.fmt.clone());
-    let (t, d) = match value {
-        None => (CellType::S, None),
-        Some(CellValue::Number(number)) => (
-            CellType::N,
-            render_override_display(fmt.as_deref(), FmtValue::Number(*number)),
-        ),
-        Some(CellValue::Text(text)) => (
-            CellType::S,
-            render_override_display(fmt.as_deref(), FmtValue::Text(text)),
-        ),
-        Some(CellValue::Bool(boolean)) => (
-            CellType::B,
-            render_override_display(fmt.as_deref(), FmtValue::Bool(*boolean)),
-        ),
-    };
+    if let Some(formula) = &value.f {
+        let mut cell = stored.cloned().unwrap_or_else(|| {
+            let (t, d) = literal_override_value(fmt.as_deref(), value.v.as_ref());
+            WindowCell {
+                t,
+                v: value.v.clone(),
+                d,
+                f: None,
+                fmt: fmt.clone(),
+                e: false,
+                s: None,
+            }
+        });
+        if let Some(evaluated) = evaluated {
+            evaluated.apply(&mut cell);
+        }
+        cell.f = Some(normalize_authored_formula(formula));
+        cell.e = evaluated.is_some();
+        return cell;
+    }
+    let (t, d) = literal_override_value(fmt.as_deref(), value.v.as_ref());
     WindowCell {
         t,
-        v: value.cloned(),
+        v: value.v.clone(),
         d,
         f: None,
         fmt,
         e: false,
         s: stored.and_then(|cell| cell.s),
     }
+}
+
+fn literal_override_value(
+    fmt: Option<&str>,
+    value: Option<&CellValue>,
+) -> (CellType, Option<String>) {
+    match value {
+        None => (CellType::S, None),
+        Some(CellValue::Number(number)) => (
+            CellType::N,
+            render_override_display(fmt, FmtValue::Number(*number)),
+        ),
+        Some(CellValue::Text(text)) => (
+            CellType::S,
+            render_override_display(fmt, FmtValue::Text(text)),
+        ),
+        Some(CellValue::Bool(boolean)) => (
+            CellType::B,
+            render_override_display(fmt, FmtValue::Bool(*boolean)),
+        ),
+    }
+}
+
+fn normalize_authored_formula(formula: &str) -> String {
+    formula.strip_prefix('=').unwrap_or(formula).to_owned()
 }
 
 fn render_override_display(fmt: Option<&str>, value: FmtValue<'_>) -> Option<String> {
@@ -538,20 +582,21 @@ pub fn write_xlsx_with_evaluated_overrides(
                 scan_error = Some(error);
                 return;
             }
-            if let Some(value) = evaluated.get(&EvalCellRef {
+            let eval_ref = EvalCellRef {
                 sheet: sheet_index,
                 r: row,
                 c: column,
-            }) {
+            };
+            if let Some(value) = evaluated.get(&eval_ref) {
                 value.apply(&mut stored_cell);
             }
             let cell = match overrides_for_sheet.and_then(|sheet| sheet.cells.get(&(row, column))) {
                 Some(value) => {
                     consumed_overrides.insert((row, column));
-                    if stored_cell.f.is_some() {
+                    if value.f.is_none() && stored_cell.f.is_some() {
                         replaced_formulas.insert((row, column));
                     }
-                    overridden_cell(Some(&stored_cell), value.as_ref())
+                    overridden_cell(Some(&stored_cell), value, evaluated.get(&eval_ref).copied())
                 }
                 None => stored_cell,
             };
@@ -630,10 +675,28 @@ pub fn write_xlsx_with_evaluated_overrides(
             remaining.sort_by_key(|(position, _)| **position);
             for (&(row, column), value) in remaining {
                 checkpoint(cancel)?;
-                if value.is_none() {
+                if value.f.is_none() && value.v.is_none() {
                     continue;
                 }
-                let cell = overridden_cell(None, value.as_ref());
+                let cell = overridden_cell(
+                    None,
+                    value,
+                    evaluated
+                        .get(&EvalCellRef {
+                            sheet: sheet_index,
+                            r: row,
+                            c: column,
+                        })
+                        .copied(),
+                );
+                let cached_formula = if let Some(formula) = &cell.f {
+                    let column = xlsx_column(column)?;
+                    let cached_result =
+                        formula_result(&cell, &meta.name, row, column, &mut dropped)?;
+                    Some((formula.clone(), column, cached_result))
+                } else {
+                    None
+                };
                 write_xlsx_cell(
                     worksheet,
                     &mut formats,
@@ -642,10 +705,20 @@ pub fn write_xlsx_with_evaluated_overrides(
                     row,
                     column,
                     &cell,
-                    None,
+                    cached_formula
+                        .as_ref()
+                        .and_then(|(_, _, result)| result.as_deref()),
                     &mut dropped,
                     out,
                 )?;
+                if let Some((formula, column, cached_result)) = cached_formula {
+                    sheet_formula_patches.push(FormulaPatch {
+                        cell: cell_reference(row, column),
+                        formula,
+                        cached_result,
+                        cell_type: cell.t,
+                    });
+                }
             }
         }
         sheet_patches.push(SheetXmlPatch {
@@ -765,10 +838,10 @@ pub fn write_csv_with_evaluated_overrides(
     // retained format code and style.
     let mut override_rows: HashMap<u32, BTreeMap<u32, WindowCell>> = HashMap::new();
     for (&(row, column), value) in &sheet_overrides.cells {
-        override_rows
-            .entry(row)
-            .or_default()
-            .insert(column, overridden_cell(None, value.as_ref()));
+        override_rows.entry(row).or_default().insert(
+            column,
+            overridden_cell(None, value, evaluated.get(&(row, column)).copied()),
+        );
     }
     let mut replaced_formulas = HashSet::new();
 
@@ -827,13 +900,13 @@ pub fn write_csv_with_evaluated_overrides(
                 // The stored cell is superseded; upgrade the override's
                 // rendering with its retained format code instead of
                 // queueing it (last stored duplicate wins here too).
-                if cell.f.is_some() {
+                if value.f.is_none() && cell.f.is_some() {
                     replaced_formulas.insert((row, column));
                 }
-                override_rows
-                    .entry(row)
-                    .or_default()
-                    .insert(column, overridden_cell(Some(&cell), value.as_ref()));
+                override_rows.entry(row).or_default().insert(
+                    column,
+                    overridden_cell(Some(&cell), value, evaluated.get(&(row, column)).copied()),
+                );
                 return;
             }
 
@@ -1353,6 +1426,11 @@ fn normalized_formula_cell_start(
             CellType::N | CellType::D => None,
             CellType::S => Some("str"),
             CellType::B => Some("b"),
+            // `#CYCLE!` is wax's structured engine error, not an OOXML
+            // `ST_CellError` token. Cache it as a formula string so the
+            // workbook remains readable; wax recomputes the cycle to an
+            // error cell on open while preserving the same visible value.
+            CellType::E if patch.cached_result.as_deref() == Some("#CYCLE!") => Some("str"),
             CellType::E => Some("e"),
         }
     };
@@ -3469,7 +3547,13 @@ mod tests {
     // ---- v0.2 export-with-overrides (docs/v0.2-overrides-contract.md) ----
 
     fn ov(sheet: u32, r: u32, c: u32, v: Option<CellValue>) -> CellOverride {
-        CellOverride { sheet, r, c, v }
+        CellOverride {
+            sheet,
+            r,
+            c,
+            v,
+            f: None,
+        }
     }
 
     fn csv_with_overrides(

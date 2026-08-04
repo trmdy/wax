@@ -25,17 +25,18 @@ pub enum CellValue {
 /// naming the cap.
 pub const EXPORT_OVERRIDES_CAP: usize = 100_000;
 
-/// One edited cell layered over the read model at export time
-/// (`docs/v0.2-overrides-contract.md`). Indices are zero-based absolute;
-/// `v: None` clears the cell. Strings are always stored as text (a leading
-/// `=` is never reinterpreted as a formula) and numbers are never coerced
-/// to dates — the retained format code carries date semantics.
+/// One edited cell layered over the read model at recalc/export time.
+/// Indices are zero-based absolute; `v: None` clears a literal cell. When
+/// `f` is present the entry authors a formula and `v` is only an advisory
+/// caller cache; otherwise the frozen v0.2 literal rules apply, including
+/// that a leading `=` in a string is never reinterpreted as a formula.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CellOverride {
     pub sheet: u32,
     pub r: u32,
     pub c: u32,
     pub v: Option<CellValue>,
+    pub f: Option<String>,
 }
 
 /// Column and row size edits layered over the read model at export time
